@@ -175,3 +175,38 @@
   width: 110px;
   accent-color: var(--accent);
 }
+
+/* Cue Controls */
+.cueControls {
+  position: absolute;
+  top: 12px;
+  right: 52px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+}
+
+.cueBtn {
+  background: rgba(26, 26, 26, 0.85);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 5px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: all 0.15s;
+  backdrop-filter: blur(4px);
+}
+
+.cueBtn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.cueBtnActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}

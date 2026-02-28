@@ -33,6 +33,8 @@ export default function Workbench() {
   const [geminiLog, setGeminiLog] = useState<LogEntry[]>([]);
 
   const avatarActionRef = useRef<((type: string, params: Record<string, unknown>) => void) | null>(null);
+  const chatAddMessageRef = useRef<((role: "user" | "assistant" | "system", text: string) => void) | null>(null);
+  const playMusicByNameRef = useRef<((songName: string) => void) | null>(null);
   const voice = useVoice({
     onAction: (action) => avatarActionRef.current?.(action.type, action),
   });
@@ -71,6 +73,7 @@ export default function Workbench() {
     if (type === "play_animation") ctrl.switchAnim(params.animation as string);
     if (type === "set_expression") ctrl.setExpression(params.expression as string, (params.intensity as number) || 0.6);
     if (type === "trigger_talking") ctrl.triggerTalking();
+    if (type === "play_music") playMusicByNameRef.current?.((params.song as string) || "");
     setLastActions(prev => [...prev.slice(-19), { type, ...params }]);
     addLog("action", `${type}: ${type === "play_animation" ? params.animation : type === "set_expression" ? `${params.expression} @ ${params.intensity}` : JSON.stringify(params)}`);
   }, [addLog]);
@@ -123,6 +126,10 @@ export default function Workbench() {
             musicScript={musicScript}
             musicActive={musicActive}
             audioRef={audioRef}
+            faceState={faceTrack.faceState}
+            faceActive={faceTrack.active}
+            onStartFaceTrack={faceTrack.start}
+            onStopFaceTrack={faceTrack.stop}
           />
           {musicActive && musicScript && (
             <MusicPlayer
@@ -142,6 +149,8 @@ export default function Workbench() {
             faceContextEnabled={faceContextEnabled}
             onToggleFaceContext={setFaceContextEnabled}
             onLog={addLog}
+            addMessageRef={chatAddMessageRef}
+            playMusicByNameRef={playMusicByNameRef}
           />
         </div>
       </div>

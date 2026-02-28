@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from "react";
 import styles from "./AriaChat.module.css";
 import { sendChat, clearChat as apiClearChat, getHistory, getMusicScripts, type SongInfo, type ChatMessage } from "@/lib/api";
 import { VOICES } from "@/lib/constants";
@@ -15,6 +15,8 @@ interface AriaChatProps {
   faceContextEnabled: boolean;
   onToggleFaceContext: (enabled: boolean) => void;
   onLog?: (type: "user" | "gemini" | "tool_call" | "tool_result" | "action" | "error", content: string) => void;
+  addMessageRef?: MutableRefObject<((role: "user" | "assistant" | "system", text: string) => void) | null>;
+  playMusicByNameRef?: MutableRefObject<((songName: string) => void) | null>;
 }
 
 interface DisplayMessage {
@@ -26,7 +28,7 @@ interface DisplayMessage {
 let msgCounter = 0;
 function nextId() { return `msg-${++msgCounter}`; }
 
-export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onToggleFaceContext, onLog }: AriaChatProps) {
+export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onToggleFaceContext, onLog, addMessageRef, playMusicByNameRef }: AriaChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -57,6 +59,25 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
     setMessages((prev) => [...prev, msg]);
     return msg.id;
   }, []);
+
+  useEffect(() => {
+    if (addMessageRef) addMessageRef.current = addMessage;
+    return () => { if (addMessageRef) addMessageRef.current = null; };
+  }, [addMessage, addMessageRef]);
+
+  const playMusicByName = useCallback((songName: string) => {
+    const name = songName.toLowerCase().replace(/_/g, " ");
+    const song = songs.find((s) => s.name.toLowerCase().includes(name) || name.includes(s.name.toLowerCase()));
+    if (song?.audio_url) {
+      addMessage("system", `Playing ${song.name}...`);
+      onStartMusic(song);
+    }
+  }, [songs, addMessage, onStartMusic]);
+
+  useEffect(() => {
+    if (playMusicByNameRef) playMusicByNameRef.current = playMusicByName;
+    return () => { if (playMusicByNameRef) playMusicByNameRef.current = null; };
+  }, [playMusicByName, playMusicByNameRef]);
 
   const removeMessage = useCallback((id: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== id));

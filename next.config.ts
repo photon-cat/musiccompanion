@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  reactStrictMode: false,
   // Proxy API and WebSocket calls to the Python FastAPI backend
   async rewrites() {
     return [

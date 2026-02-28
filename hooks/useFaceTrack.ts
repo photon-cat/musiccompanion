@@ -87,13 +87,20 @@ export function useFaceTrack(): UseFaceTrackReturn {
       video.autoplay = true;
       video.playsInline = true;
       video.muted = true;
-      video.style.display = "none";
+      // Position offscreen instead of display:none (some browsers won't decode hidden video)
+      video.style.position = "fixed";
+      video.style.top = "-9999px";
+      video.style.left = "-9999px";
+      video.style.width = "1px";
+      video.style.height = "1px";
       document.body.appendChild(video);
       videoRef.current = video;
 
+      // Wait for video to be loaded and actually playing
       await new Promise<void>((resolve) => {
         video.onloadeddata = () => resolve();
       });
+      await video.play();
 
       setActive(true);
       setLoading(false);
@@ -112,13 +119,15 @@ export function useFaceTrack(): UseFaceTrackReturn {
       // Detection loop
       function detect() {
         if (!videoRef.current || !landmarkerRef.current) return;
-        const now = performance.now();
 
-        // Skip if video isn't ready or timestamp hasn't advanced
-        if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
+        // Skip if video isn't ready
+        if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0 || videoRef.current.paused) {
           animFrameRef.current = requestAnimationFrame(detect);
           return;
         }
+
+        // Use rounded performance.now() — MediaPipe requires strictly increasing integer ms
+        const now = Math.round(performance.now());
         if (now <= lastTimestamp) {
           animFrameRef.current = requestAnimationFrame(detect);
           return;
@@ -128,7 +137,8 @@ export function useFaceTrack(): UseFaceTrackReturn {
         let result;
         try {
           result = landmarkerRef.current.detectForVideo(videoRef.current, now);
-        } catch {
+        } catch (e) {
+          console.warn("[FaceTrack] detectForVideo error:", e);
           animFrameRef.current = requestAnimationFrame(detect);
           return;
         }

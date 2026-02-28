@@ -12,15 +12,20 @@ import styles from "./AvatarPanel.module.css";
 import { MODELS, VRMA_ANIMS, ANIM_LABELS, type ModelName } from "@/lib/constants";
 import { getInterpolatedDirective, getTempoAt, getMusicExpressionValues, type MusicScript } from "@/lib/music";
 import type { AvatarControls } from "./Workbench";
+import type { FaceState } from "@/hooks/useFaceTrack";
 
 interface AvatarPanelProps {
   controlsRef: MutableRefObject<AvatarControls | null>;
   musicScript: MusicScript | null;
   musicActive: boolean;
   audioRef: MutableRefObject<HTMLAudioElement | null>;
+  faceState: FaceState | null;
+  faceActive: boolean;
+  onStartFaceTrack: () => void;
+  onStopFaceTrack: () => void;
 }
 
-export default function AvatarPanel({ controlsRef, musicScript, musicActive, audioRef }: AvatarPanelProps) {
+export default function AvatarPanel({ controlsRef, musicScript, musicActive, audioRef, faceState, faceActive, onStartFaceTrack, onStopFaceTrack }: AvatarPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -40,11 +45,44 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState("Loading model...");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [beatPulse, setBeatPulse] = useState(true);
+  const baseCameraZRef = useRef(3.5);
+
+  // Rest pose for procedural dance (captured after model load)
+  const restPoseRef = useRef<Record<string, { rx: number; ry: number; rz: number; py?: number }>>({});
+
+  // Scripted choreography cues for music playback
+  interface MusicCue {
+    t: number;
+    anim?: string;
+    expression?: string;
+    expressionIntensity?: number;
+    expressionDuration?: number;
+  }
+  const musicCuesRef = useRef<MusicCue[]>([]);
+  const nextCueRef = useRef(0);
+  const switchAnimRef = useRef<(name: string) => void>(() => {});
+  const beatPulseRef = useRef(true);
 
   // Expression override state
   const expressionOverrideRef = useRef<{ expression: string; intensity: number } | null>(null);
   const expressionOverrideUntilRef = useRef(0);
   const talkingUntilRef = useRef(0);
+
+  // Wink cue state
+  const winkPhaseRef = useRef(-1);
+
+  // Stable refs for face track callbacks
+  const faceTrackStartRef = useRef(onStartFaceTrack);
+  const faceTrackStopRef = useRef(onStopFaceTrack);
+  useEffect(() => { faceTrackStartRef.current = onStartFaceTrack; }, [onStartFaceTrack]);
+  useEffect(() => { faceTrackStopRef.current = onStopFaceTrack; }, [onStopFaceTrack]);
+
+  // Face tracking ref (kept fresh for render loop)
+  const faceStateRef = useRef<FaceState | null>(null);
+  const faceActiveRef = useRef(false);
+  useEffect(() => { faceStateRef.current = faceState; }, [faceState]);
+  useEffect(() => { faceActiveRef.current = faceActive; }, [faceActive]);
 
   // Idle expression system — subtle ambient emotes to stay natural
   const idleExprTimerRef = useRef(0);
@@ -150,6 +188,7 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
   const playIdleRef = useRef(() => {});
   useEffect(() => {
     playIdleRef.current = () => switchAnim("idle_loop");
+    switchAnimRef.current = switchAnim;
   }, [switchAnim]);
 
   // Load model
@@ -188,11 +227,26 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
           modelRef.current = vrm.scene;
           sceneRef.current!.add(vrm.scene);
 
+          // Capture rest pose for procedural dance
+          if (vrm.humanoid) {
+            const boneNames = ["head", "spine", "chest", "hips", "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm", "leftShoulder", "rightShoulder"];
+            const rest: Record<string, { rx: number; ry: number; rz: number; py?: number }> = {};
+            for (const name of boneNames) {
+              const bone = vrm.humanoid.getRawBoneNode(name as any);
+              if (bone) {
+                rest[name] = { rx: bone.rotation.x, ry: bone.rotation.y, rz: bone.rotation.z };
+                if (name === "hips") rest[name].py = bone.position.y;
+              }
+            }
+            restPoseRef.current = rest;
+          }
+
           await new Promise(r => setTimeout(r, 100));
           const box = new THREE.Box3().setFromObject(vrm.scene);
           const center = box.getCenter(new THREE.Vector3());
           orbitRef.current!.target.set(center.x, center.y + 0.1, center.z);
           cameraRef.current!.position.set(center.x, center.y + 0.1, center.z + 3.5);
+          baseCameraZRef.current = center.z + 3.5;
           orbitRef.current!.update();
 
           await playVRMAnim("idle_loop");
@@ -310,47 +364,109 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
       if (mixerRef.current) mixerRef.current.update(delta);
 
       const vrm = vrmRef.current;
-      if (vrm) {
-        const audio = audioRef.current;
-        const isPlaying = musicActive && musicScript && audio && !audio.paused;
+      const audio = audioRef.current;
+      const mActive = musicActiveRef.current;
+      const isPlaying = mActive && audio && !audio.paused;
 
+      if (vrm) {
         if (isPlaying) {
           const t = audio!.currentTime;
-          const directive = getInterpolatedDirective(musicScript!, t);
-          if (directive) {
-            // Apply procedural motion
-            applyMusicMotion(vrm, directive, t, musicScript!);
-            // Apply expression
-            const expVals = getMusicExpressionValues(directive.expression, directive.intensity);
-            for (const [name, val] of Object.entries(expVals)) trySetExpression(name, val);
-            if (directive.eye_state === "half_closed") trySetExpression("blink", 0.3);
-            else if (directive.eye_state === "wide") { trySetExpression("blink", 0); trySetExpression("surprised", 0.25); }
+          // Fire scripted choreography cues
+          const cues = musicCuesRef.current;
+          while (nextCueRef.current < cues.length && cues[nextCueRef.current].t <= t) {
+            const cue = cues[nextCueRef.current];
+            if (cue.anim) switchAnimRef.current(cue.anim);
+            if (cue.expression) {
+              expressionOverrideRef.current = { expression: cue.expression, intensity: cue.expressionIntensity ?? 0.7 };
+              expressionOverrideUntilRef.current = performance.now() + (cue.expressionDuration ?? 4) * 1000;
+            }
+            nextCueRef.current++;
+          }
+          // Beat-synced camera pulse (zoom in/out)
+          if (beatPulseRef.current && cameraRef.current) {
+            const mScript = musicScriptRef.current;
+            const bpm = mScript ? getTempoAt(mScript, t) : 120;
+            const beatFreq = bpm / 60;
+            const beat = t * beatFreq;
+            const pulse = Math.pow(Math.abs(Math.sin(beat * Math.PI)), 2.0);
+            const baseZ = baseCameraZRef.current;
+            cameraRef.current.position.z = baseZ - pulse * 0.15;
           }
         } else {
-          // Normal blink
-          blinkTimerRef.current += delta;
-          if (blinkPhaseRef.current >= 0) {
-            blinkPhaseRef.current += delta;
-            if (blinkPhaseRef.current >= BLINK_TOTAL) {
-              blinkPhaseRef.current = -1;
-              trySetExpression("blink", 0);
-            } else {
-              trySetExpression("blink", getBlinkValue(blinkPhaseRef.current));
+          // Reset camera when not playing
+          if (cameraRef.current) {
+            cameraRef.current.position.z = baseCameraZRef.current;
+          }
+          const fs = faceStateRef.current;
+          const ftActive = faceActiveRef.current && fs;
+
+          if (ftActive) {
+            // --- Face tracking drives avatar expressions ---
+            trySetExpression("blink", (fs.blinkL + fs.blinkR) / 2);
+            trySetExpression("happy", Math.max(0, fs.smile * 1.5));
+            trySetExpression("aa", fs.jawOpen);
+            trySetExpression("surprised", fs.browUp > 0.3 ? fs.browUp * 0.8 : 0);
+            trySetExpression("ee", fs.mouthPucker * 0.6);
+
+            // Drive head rotation from face tracking
+            if (vrm.humanoid) {
+              const head = vrm.humanoid.getRawBoneNode("head");
+              if (head) {
+                // Map tracked head pose to avatar (subtle, scaled down)
+                head.rotation.x += fs.headPitch * 0.008;
+                head.rotation.y += -fs.headYaw * 0.008;
+                head.rotation.z += fs.headRoll * 0.005;
+              }
             }
-          } else if (blinkTimerRef.current > nextBlinkRef.current) {
-            blinkTimerRef.current = 0;
-            nextBlinkRef.current = 2.5 + Math.random() * 4;
-            blinkPhaseRef.current = 0;
-            if (Math.random() < 0.2) nextBlinkRef.current = 0.3;
+          } else {
+            // Normal blink
+            blinkTimerRef.current += delta;
+            if (blinkPhaseRef.current >= 0) {
+              blinkPhaseRef.current += delta;
+              if (blinkPhaseRef.current >= BLINK_TOTAL) {
+                blinkPhaseRef.current = -1;
+                trySetExpression("blink", 0);
+              } else {
+                trySetExpression("blink", getBlinkValue(blinkPhaseRef.current));
+              }
+            } else if (blinkTimerRef.current > nextBlinkRef.current) {
+              blinkTimerRef.current = 0;
+              nextBlinkRef.current = 2.5 + Math.random() * 4;
+              blinkPhaseRef.current = 0;
+              if (Math.random() < 0.2) nextBlinkRef.current = 0.3;
+            }
+
+            // Idle expressions — subtle ambient emotes every few seconds
+            if (!expressionOverrideRef.current) {
+              idleExprTimerRef.current += delta;
+              const ie = idleExprRef.current;
+              if (ie) {
+                ie.elapsed += delta;
+                const fadeIn = Math.min(ie.elapsed / 0.5, 1);
+                const fadeOut = Math.max(1 - (ie.elapsed - ie.duration + 0.5) / 0.5, 0);
+                const envelope = Math.min(fadeIn, fadeOut);
+                trySetExpression(ie.name, ie.intensity * Math.max(0, envelope));
+                if (ie.elapsed >= ie.duration) {
+                  trySetExpression(ie.name, 0);
+                  idleExprRef.current = null;
+                  nextIdleExprRef.current = 3 + Math.random() * 5;
+                  idleExprTimerRef.current = 0;
+                }
+              } else if (idleExprTimerRef.current > nextIdleExprRef.current) {
+                const pick = IDLE_EXPRESSIONS[Math.floor(Math.random() * IDLE_EXPRESSIONS.length)];
+                idleExprRef.current = { ...pick, elapsed: 0 };
+                idleExprTimerRef.current = 0;
+              }
+            }
           }
 
-          // Talking — varied mouth open/close
+          // Talking — varied mouth open/close (works in both modes)
           if (performance.now() < talkingUntilRef.current) {
             const tp = performance.now() * 0.01;
             const base = Math.abs(Math.sin(tp)) * 0.5;
             const variation = Math.abs(Math.sin(tp * 2.7)) * 0.2;
             trySetExpression("aa", base + variation);
-          } else {
+          } else if (!ftActive) {
             trySetExpression("aa", 0);
           }
 
@@ -369,27 +485,26 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
             expressionOverrideRef.current = null;
           }
 
-          // Idle expressions — subtle ambient emotes every few seconds
-          if (!expressionOverrideRef.current) {
-            idleExprTimerRef.current += delta;
-            const ie = idleExprRef.current;
-            if (ie) {
-              ie.elapsed += delta;
-              // Smooth fade in/out envelope
-              const fadeIn = Math.min(ie.elapsed / 0.5, 1);
-              const fadeOut = Math.max(1 - (ie.elapsed - ie.duration + 0.5) / 0.5, 0);
-              const envelope = Math.min(fadeIn, fadeOut);
-              trySetExpression(ie.name, ie.intensity * Math.max(0, envelope));
-              if (ie.elapsed >= ie.duration) {
-                trySetExpression(ie.name, 0);
-                idleExprRef.current = null;
-                nextIdleExprRef.current = 3 + Math.random() * 5;
-                idleExprTimerRef.current = 0;
-              }
-            } else if (idleExprTimerRef.current > nextIdleExprRef.current) {
-              const pick = IDLE_EXPRESSIONS[Math.floor(Math.random() * IDLE_EXPRESSIONS.length)];
-              idleExprRef.current = { ...pick, elapsed: 0 };
-              idleExprTimerRef.current = 0;
+          // Wink cue — override left eye blink for a clean wink
+          if (winkPhaseRef.current >= 0) {
+            winkPhaseRef.current += delta;
+            const WINK_CLOSE = 0.08;
+            const WINK_HOLD = 0.25;
+            const WINK_OPEN = 0.15;
+            const WINK_TOTAL = WINK_CLOSE + WINK_HOLD + WINK_OPEN;
+            if (winkPhaseRef.current >= WINK_TOTAL) {
+              winkPhaseRef.current = -1;
+              trySetExpression("blink", 0);
+              trySetExpression("happy", 0);
+            } else {
+              let winkVal: number;
+              const p = winkPhaseRef.current;
+              if (p < WINK_CLOSE) winkVal = (p / WINK_CLOSE) ** 2;
+              else if (p < WINK_CLOSE + WINK_HOLD) winkVal = 1;
+              else { const t = (p - WINK_CLOSE - WINK_HOLD) / WINK_OPEN; winkVal = (1 - t) ** 2; }
+              // Use full blink (most VRM models don't have separate L/R)
+              trySetExpression("blink", winkVal);
+              trySetExpression("happy", winkVal * 0.3);
             }
           }
         }
@@ -427,7 +542,191 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
   // We need to keep fresh refs for the animate loop.
   const musicActiveRef = useRef(musicActive);
   const musicScriptRef = useRef(musicScript);
-  useEffect(() => { musicActiveRef.current = musicActive; }, [musicActive]);
+  useEffect(() => { beatPulseRef.current = beatPulse; }, [beatPulse]);
+  useEffect(() => {
+    musicActiveRef.current = musicActive;
+    if (musicActive && musicScript) {
+      // Build choreography cues based on song (identified by duration)
+      const dur = musicScript.duration;
+      let cues: MusicCue[] = [];
+
+      if (dur > 250) {
+      // Faded (4:29 / 269s) — choreographed VRMA animation sequence
+      cues = [
+        // Intro — gentle sway
+        { t: 0,   anim: "waiting",  expression: "relaxed", expressionIntensity: 0.4, expressionDuration: 8 },
+        { t: 8,   anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.5 },
+        // Build-up
+        { t: 16,  anim: "VRMA_01", expression: "happy", expressionIntensity: 0.4 },
+        { t: 20,  anim: "idle_loop" },
+        { t: 24,  anim: "VRMA_06", expression: "happy", expressionIntensity: 0.5 },
+        { t: 28,  anim: "idle_loop" },
+        // Verse 1 — "You were the shadow to my light"
+        { t: 32,  anim: "VRMA_03", expression: "happy", expressionIntensity: 0.6 },
+        { t: 36,  anim: "VRMA_01" },
+        { t: 40,  anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 44,  anim: "VRMA_06" },
+        { t: 48,  anim: "VRMA_03", expression: "happy", expressionIntensity: 0.5 },
+        { t: 52,  anim: "idle_loop" },
+        // Pre-chorus build
+        { t: 56,  anim: "VRMA_05", expression: "happy", expressionIntensity: 0.7 },
+        { t: 60,  anim: "VRMA_01" },
+        // Chorus 1 — "Where are you now" — big energy
+        { t: 64,  anim: "VRMA_05", expression: "happy", expressionIntensity: 0.9 },
+        { t: 68,  anim: "VRMA_02", expression: "happy", expressionIntensity: 0.8 },
+        { t: 72,  anim: "VRMA_04", expression: "happy", expressionIntensity: 0.9 },
+        { t: 76,  anim: "VRMA_05" },
+        { t: 80,  anim: "liked",   expression: "happy", expressionIntensity: 1.0 },
+        { t: 84,  anim: "VRMA_07", expression: "happy", expressionIntensity: 0.8 },
+        { t: 88,  anim: "VRMA_05" },
+        { t: 92,  anim: "VRMA_04" },
+        // Post-chorus drop
+        { t: 96,  anim: "VRMA_06", expression: "relaxed", expressionIntensity: 0.6 },
+        { t: 100, anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 104, anim: "VRMA_01" },
+        // Verse 2
+        { t: 108, anim: "VRMA_03", expression: "happy", expressionIntensity: 0.5 },
+        { t: 112, anim: "idle_loop" },
+        { t: 116, anim: "VRMA_06", expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 120, anim: "VRMA_01", expression: "happy", expressionIntensity: 0.5 },
+        { t: 124, anim: "idle_loop" },
+        // Pre-chorus 2
+        { t: 128, anim: "VRMA_05", expression: "happy", expressionIntensity: 0.7 },
+        { t: 132, anim: "VRMA_03" },
+        // Chorus 2 — peak energy
+        { t: 136, anim: "VRMA_05", expression: "happy", expressionIntensity: 1.0 },
+        { t: 140, anim: "VRMA_04", expression: "happy", expressionIntensity: 0.9 },
+        { t: 144, anim: "liked",   expression: "happy", expressionIntensity: 1.0 },
+        { t: 148, anim: "VRMA_02" },
+        { t: 152, anim: "VRMA_05", expression: "happy", expressionIntensity: 0.9 },
+        { t: 156, anim: "VRMA_07" },
+        { t: 160, anim: "VRMA_04", expression: "happy", expressionIntensity: 0.8 },
+        { t: 164, anim: "VRMA_05" },
+        // Bridge — calm down
+        { t: 168, anim: "VRMA_06", expression: "relaxed", expressionIntensity: 0.6 },
+        { t: 172, anim: "waiting", expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 180, anim: "VRMA_01", expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 188, anim: "idle_loop" },
+        // Final chorus — biggest energy
+        { t: 196, anim: "VRMA_05", expression: "happy", expressionIntensity: 1.0 },
+        { t: 200, anim: "VRMA_04", expression: "happy", expressionIntensity: 1.0 },
+        { t: 204, anim: "liked",   expression: "happy", expressionIntensity: 1.0 },
+        { t: 208, anim: "VRMA_02" },
+        { t: 212, anim: "VRMA_05" },
+        { t: 216, anim: "VRMA_07", expression: "happy", expressionIntensity: 0.9 },
+        { t: 220, anim: "VRMA_04" },
+        { t: 224, anim: "VRMA_05" },
+        // Outro — wind down
+        { t: 228, anim: "VRMA_06", expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 236, anim: "VRMA_01", expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 244, anim: "waiting", expression: "relaxed", expressionIntensity: 0.3 },
+        { t: 256, anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.2 },
+      ];
+
+      } else if (dur < 200) {
+      // All The Things She Said (3:02 / 182s) — hypertechno remix, high energy throughout
+      cues = [
+        // Synth intro
+        { t: 0,   anim: "waiting",  expression: "relaxed", expressionIntensity: 0.3, expressionDuration: 6 },
+        { t: 6,   anim: "VRMA_01",  expression: "happy", expressionIntensity: 0.5 },
+        // Beat drops in
+        { t: 12,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.7 },
+        { t: 16,  anim: "VRMA_04" },
+        { t: 20,  anim: "VRMA_02",  expression: "happy", expressionIntensity: 0.8 },
+        { t: 24,  anim: "VRMA_05" },
+        // Verse 1 — "All the things she said"
+        { t: 28,  anim: "VRMA_03",  expression: "happy", expressionIntensity: 0.7 },
+        { t: 32,  anim: "VRMA_05" },
+        { t: 36,  anim: "VRMA_04",  expression: "happy", expressionIntensity: 0.8 },
+        { t: 40,  anim: "VRMA_07" },
+        { t: 44,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.9 },
+        { t: 48,  anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        // Chorus 1 — maximum energy
+        { t: 52,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 1.0 },
+        { t: 55,  anim: "VRMA_04" },
+        { t: 58,  anim: "VRMA_02" },
+        { t: 61,  anim: "VRMA_05" },
+        { t: 64,  anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        { t: 67,  anim: "VRMA_07" },
+        { t: 70,  anim: "VRMA_05" },
+        { t: 73,  anim: "VRMA_04" },
+        // Break
+        { t: 76,  anim: "VRMA_06",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 80,  anim: "VRMA_01",  expression: "happy", expressionIntensity: 0.5 },
+        { t: 84,  anim: "VRMA_03" },
+        // Verse 2
+        { t: 88,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.8 },
+        { t: 92,  anim: "VRMA_04" },
+        { t: 96,  anim: "VRMA_02",  expression: "happy", expressionIntensity: 0.9 },
+        { t: 100, anim: "VRMA_07" },
+        { t: 104, anim: "VRMA_05" },
+        // Chorus 2 — peak
+        { t: 108, anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        { t: 111, anim: "VRMA_05" },
+        { t: 114, anim: "VRMA_04",  expression: "happy", expressionIntensity: 1.0 },
+        { t: 117, anim: "VRMA_02" },
+        { t: 120, anim: "VRMA_05" },
+        { t: 123, anim: "VRMA_07" },
+        { t: 126, anim: "liked" },
+        { t: 129, anim: "VRMA_04" },
+        // Bridge — brief calm
+        { t: 132, anim: "VRMA_06",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 136, anim: "waiting",  expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 140, anim: "VRMA_01",  expression: "happy", expressionIntensity: 0.6 },
+        // Final chorus — all out
+        { t: 144, anim: "VRMA_05",  expression: "happy", expressionIntensity: 1.0 },
+        { t: 147, anim: "VRMA_04" },
+        { t: 150, anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        { t: 153, anim: "VRMA_02" },
+        { t: 156, anim: "VRMA_05" },
+        { t: 159, anim: "VRMA_07" },
+        { t: 162, anim: "VRMA_04" },
+        { t: 165, anim: "VRMA_05" },
+        // Outro
+        { t: 168, anim: "VRMA_06",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 172, anim: "VRMA_01",  expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 176, anim: "waiting",  expression: "relaxed", expressionIntensity: 0.3 },
+        { t: 180, anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.2 },
+      ];
+
+      } else {
+      // Nostalgia Dreams (3:48 / 228s) — dreamy, moderate energy
+      cues = [
+        { t: 0,   anim: "waiting",  expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 10,  anim: "VRMA_01",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 20,  anim: "VRMA_06",  expression: "happy", expressionIntensity: 0.4 },
+        { t: 30,  anim: "VRMA_03",  expression: "happy", expressionIntensity: 0.5 },
+        { t: 40,  anim: "idle_loop" },
+        { t: 50,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.7 },
+        { t: 58,  anim: "VRMA_01" },
+        { t: 66,  anim: "VRMA_04",  expression: "happy", expressionIntensity: 0.8 },
+        { t: 74,  anim: "VRMA_02" },
+        { t: 82,  anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.9 },
+        { t: 90,  anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        { t: 98,  anim: "VRMA_06",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 106, anim: "VRMA_03",  expression: "happy", expressionIntensity: 0.6 },
+        { t: 114, anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.8 },
+        { t: 122, anim: "VRMA_04" },
+        { t: 130, anim: "liked",    expression: "happy", expressionIntensity: 1.0 },
+        { t: 138, anim: "VRMA_07" },
+        { t: 146, anim: "VRMA_05",  expression: "happy", expressionIntensity: 0.9 },
+        { t: 154, anim: "VRMA_02" },
+        { t: 162, anim: "VRMA_06",  expression: "relaxed", expressionIntensity: 0.5 },
+        { t: 170, anim: "VRMA_01",  expression: "relaxed", expressionIntensity: 0.4 },
+        { t: 180, anim: "waiting",  expression: "relaxed", expressionIntensity: 0.3 },
+        { t: 200, anim: "idle_loop", expression: "relaxed", expressionIntensity: 0.2 },
+      ];
+      }
+
+      musicCuesRef.current = cues;
+      nextCueRef.current = 0;
+    } else {
+      musicCuesRef.current = [];
+      nextCueRef.current = 0;
+      // Return to idle when music stops
+      switchAnimRef.current("idle_loop");
+    }
+  }, [musicActive, musicScript]);
   useEffect(() => { musicScriptRef.current = musicScript; }, [musicScript]);
 
   function applyMusicMotion(vrm: VRM, directive: { intensity: number; head_bob: number; sway_amount: number; pose: string }, t: number, script: MusicScript) {
@@ -447,6 +746,25 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
     const rightForearm = vrm.humanoid.getRawBoneNode("rightLowerArm");
     const leftShoulder = vrm.humanoid.getRawBoneNode("leftShoulder");
     const rightShoulder = vrm.humanoid.getRawBoneNode("rightShoulder");
+
+    // Reset bones to rest pose before applying procedural motion (mixer is paused during music)
+    const rest = restPoseRef.current;
+    const boneMap: [THREE.Object3D | null, string][] = [
+      [head, "head"], [spine, "spine"], [chest, "chest"], [hips, "hips"],
+      [leftArm, "leftUpperArm"], [rightArm, "rightUpperArm"],
+      [leftForearm, "leftLowerArm"], [rightForearm, "rightLowerArm"],
+      [leftShoulder, "leftShoulder"], [rightShoulder, "rightShoulder"],
+    ];
+    for (const [bone, name] of boneMap) {
+      if (!bone) continue;
+      const r = rest[name];
+      if (r) {
+        bone.rotation.set(r.rx, r.ry, r.rz);
+        if (name === "hips" && r.py !== undefined) bone.position.y = r.py;
+      } else {
+        bone.rotation.set(0, 0, 0);
+      }
+    }
 
     // Base head movement — always present, scales with head_bob
     if (head) {
@@ -596,6 +914,32 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
           ))}
         </div>
       )}
+
+      {/* Cue Controls */}
+      <div className={styles.cueControls}>
+        <button
+          className={styles.cueBtn}
+          onClick={() => { winkPhaseRef.current = 0; }}
+        >
+          Cue Wink
+        </button>
+        <button
+          className={`${styles.cueBtn} ${faceActive ? styles.cueBtnActive : ""}`}
+          onClick={() => {
+            if (faceActive) faceTrackStopRef.current?.();
+            else faceTrackStartRef.current?.();
+          }}
+        >
+          {faceActive ? "FT: ON" : "FT: OFF"}
+        </button>
+        <button
+          className={`${styles.cueBtn} ${beatPulse ? styles.cueBtnActive : ""}`}
+          onClick={() => setBeatPulse(p => !p)}
+          title="Toggle beat-synced camera pulse"
+        >
+          {beatPulse ? "Pulse: ON" : "Pulse: OFF"}
+        </button>
+      </div>
 
       {/* Avatar Label */}
       <div className={styles.avatarLabel}>{MODELS[activeModel].label}</div>

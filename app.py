@@ -504,7 +504,6 @@ async def voice_websocket(websocket: WebSocket):
             try:
                 async for message in gemini_ws:
                     resp = json.loads(message if isinstance(message, str) else message.decode())
-
                     # Handle tool calls from Gemini
                     tool_call = resp.get("toolCall", {})
                     fn_calls = tool_call.get("functionCalls", [])

@@ -5,11 +5,15 @@ import styles from "./AriaChat.module.css";
 import { sendChat, clearChat as apiClearChat, getHistory, getMusicScripts, type SongInfo, type ChatMessage } from "@/lib/api";
 import { VOICES } from "@/lib/constants";
 import type { UseVoiceReturn } from "@/hooks/useVoice";
+import type { UseFaceTrackReturn } from "@/hooks/useFaceTrack";
 
 interface AriaChatProps {
   voice: UseVoiceReturn;
   onAvatarAction: (type: string, params: Record<string, unknown>) => void;
   onStartMusic: (song: SongInfo) => void;
+  faceTrack: UseFaceTrackReturn;
+  faceContextEnabled: boolean;
+  onToggleFaceContext: (enabled: boolean) => void;
 }
 
 interface DisplayMessage {
@@ -21,7 +25,7 @@ interface DisplayMessage {
 let msgCounter = 0;
 function nextId() { return `msg-${++msgCounter}`; }
 
-export default function AriaChat({ voice, onAvatarAction, onStartMusic }: AriaChatProps) {
+export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onToggleFaceContext }: AriaChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -77,10 +81,15 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic }: AriaCh
       return;
     }
 
-    // Text chat via REST
+    // Text chat via REST — optionally prepend face context
+    let messageToSend = text;
+    if (faceContextEnabled && faceTrack.active) {
+      const faceDesc = faceTrack.describeFace();
+      if (faceDesc) messageToSend = `${faceDesc}\n${text}`;
+    }
     const typingId = addMessage("assistant", "typing...");
     try {
-      const data = await sendChat(text);
+      const data = await sendChat(messageToSend);
       removeMessage(typingId);
       if (data.reply) {
         addMessage("assistant", data.reply);
@@ -109,7 +118,7 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic }: AriaCh
 
     setSending(false);
     inputRef.current?.focus();
-  }, [input, voice, songs, addMessage, removeMessage, onAvatarAction, onStartMusic]);
+  }, [input, voice, songs, addMessage, removeMessage, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled]);
 
   const handleClear = useCallback(async () => {
     await apiClearChat();
@@ -139,6 +148,23 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic }: AriaCh
           <span className={styles.voiceStatus}>{voice.voiceStatus}</span>
         </div>
         <div className={styles.headerRight}>
+          <button
+            className={`${styles.faceTrackBtn} ${faceTrack.active ? styles.faceTrackActive : ""}`}
+            onClick={() => faceTrack.active ? faceTrack.stop() : faceTrack.start()}
+            disabled={faceTrack.loading}
+            title={faceTrack.active ? "Stop face tracking" : "Start face tracking"}
+          >
+            {faceTrack.loading ? "..." : "FT"}
+          </button>
+          {faceTrack.active && (
+            <button
+              className={`${styles.faceCtxBtn} ${faceContextEnabled ? styles.faceCtxActive : ""}`}
+              onClick={() => onToggleFaceContext(!faceContextEnabled)}
+              title={faceContextEnabled ? "Face context ON — model sees your expressions" : "Face context OFF — click to enable"}
+            >
+              CTX
+            </button>
+          )}
           <div className={styles.voicePicker}>
             <label htmlFor="voice-select">Voice:</label>
             <select

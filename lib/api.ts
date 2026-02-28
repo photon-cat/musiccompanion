@@ -28,6 +28,10 @@ export async function sendChat(message: string): Promise<ChatResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -42,5 +46,20 @@ export async function getHistory(): Promise<{ messages: ChatMessage[] }> {
 
 export async function getMusicScripts(): Promise<{ scripts: SongInfo[] }> {
   const res = await fetch("/api/music/scripts");
+  return res.json();
+}
+
+export interface DebugInfo {
+  model: string;
+  system_prompt: string;
+  system_prompt_full: string;
+  tools: string[];
+  history_length: number;
+  history_last_5: { role: string; text: string }[];
+  anim_aliases: Record<string, string>;
+}
+
+export async function getDebugInfo(): Promise<DebugInfo> {
+  const res = await fetch("/api/debug");
   return res.json();
 }

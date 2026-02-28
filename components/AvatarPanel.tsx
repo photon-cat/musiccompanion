@@ -46,6 +46,18 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
   const expressionOverrideUntilRef = useRef(0);
   const talkingUntilRef = useRef(0);
 
+  // Idle expression system — subtle ambient emotes to stay natural
+  const idleExprTimerRef = useRef(0);
+  const nextIdleExprRef = useRef(3 + Math.random() * 4);
+  const idleExprRef = useRef<{ name: string; intensity: number; duration: number; elapsed: number } | null>(null);
+  const IDLE_EXPRESSIONS = [
+    { name: "happy", intensity: 0.15, duration: 3.0 },
+    { name: "happy", intensity: 0.25, duration: 2.5 },
+    { name: "relaxed", intensity: 0.3, duration: 4.0 },
+    { name: "relaxed", intensity: 0.2, duration: 3.0 },
+    { name: "surprised", intensity: 0.08, duration: 1.2 },
+  ];
+
   // Blink state
   const blinkTimerRef = useRef(0);
   const nextBlinkRef = useRef(2 + Math.random() * 3);
@@ -329,7 +341,7 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
             trySetExpression("aa", 0);
           }
 
-          // Expression override
+          // Expression override (from model tool calls)
           const eo = expressionOverrideRef.current;
           if (eo && performance.now() < expressionOverrideUntilRef.current) {
             const exprMap: Record<string, Record<string, number>> = {
@@ -342,6 +354,30 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
           } else if (eo && performance.now() >= expressionOverrideUntilRef.current) {
             ["happy", "sad", "angry", "surprised", "relaxed"].forEach(e => trySetExpression(e, 0));
             expressionOverrideRef.current = null;
+          }
+
+          // Idle expressions — subtle ambient emotes every few seconds
+          if (!expressionOverrideRef.current) {
+            idleExprTimerRef.current += delta;
+            const ie = idleExprRef.current;
+            if (ie) {
+              ie.elapsed += delta;
+              // Smooth fade in/out envelope
+              const fadeIn = Math.min(ie.elapsed / 0.5, 1);
+              const fadeOut = Math.max(1 - (ie.elapsed - ie.duration + 0.5) / 0.5, 0);
+              const envelope = Math.min(fadeIn, fadeOut);
+              trySetExpression(ie.name, ie.intensity * Math.max(0, envelope));
+              if (ie.elapsed >= ie.duration) {
+                trySetExpression(ie.name, 0);
+                idleExprRef.current = null;
+                nextIdleExprRef.current = 3 + Math.random() * 5;
+                idleExprTimerRef.current = 0;
+              }
+            } else if (idleExprTimerRef.current > nextIdleExprRef.current) {
+              const pick = IDLE_EXPRESSIONS[Math.floor(Math.random() * IDLE_EXPRESSIONS.length)];
+              idleExprRef.current = { ...pick, elapsed: 0 };
+              idleExprTimerRef.current = 0;
+            }
           }
         }
 

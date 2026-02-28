@@ -5,7 +5,9 @@ import styles from "./Workbench.module.css";
 import AvatarPanel from "./AvatarPanel";
 import AriaChat from "./AriaChat";
 import MusicPlayer from "./MusicPlayer";
+import DebugPanel from "./DebugPanel";
 import { useVoice } from "@/hooks/useVoice";
+import { useFaceTrack } from "@/hooks/useFaceTrack";
 import type { MusicScript } from "@/lib/music";
 import type { SongInfo } from "@/lib/api";
 
@@ -25,7 +27,12 @@ export default function Workbench() {
   const [musicActive, setMusicActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Track actions for debug panel
+  const [lastActions, setLastActions] = useState<{ type: string; [key: string]: unknown }[]>([]);
+
   const voice = useVoice();
+  const faceTrack = useFaceTrack();
+  const [faceContextEnabled, setFaceContextEnabled] = useState(false);
 
   const handleStartMusic = useCallback(async (song: SongInfo) => {
     const res = await fetch(song.script_url);
@@ -52,6 +59,7 @@ export default function Workbench() {
     if (!ctrl) return;
     if (type === "play_animation") ctrl.switchAnim(params.animation as string);
     if (type === "set_expression") ctrl.setExpression(params.expression as string, (params.intensity as number) || 0.6);
+    setLastActions(prev => [...prev.slice(-19), { type, ...params }]);
   }, []);
 
   const handleDividerDown = useCallback((e: React.MouseEvent) => {
@@ -79,6 +87,7 @@ export default function Workbench() {
   return (
     <div className={styles.workbench}>
       <audio ref={audioRef} preload="auto" onEnded={handleStopMusic} />
+      <DebugPanel lastActions={lastActions} />
       <div className={styles.mainRow}>
         <div className={styles.avatarContainer}>
           <AvatarPanel
@@ -101,6 +110,9 @@ export default function Workbench() {
             voice={voice}
             onAvatarAction={handleAvatarAction}
             onStartMusic={handleStartMusic}
+            faceTrack={faceTrack}
+            faceContextEnabled={faceContextEnabled}
+            onToggleFaceContext={setFaceContextEnabled}
           />
         </div>
       </div>

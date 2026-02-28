@@ -1,7 +1,11 @@
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import yaml
 import json
 import os
 import asyncio
+import traceback
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -119,7 +123,12 @@ AVATAR_TOOLS = [
                 properties={
                     "song": genai.protos.Schema(
                         type=genai.protos.Type.STRING,
-                        description="Song name. Available: 'faded' (Alan Walker - Faded)",
+                        description=(
+                            "Song name. Available: "
+                            "'faded' (Alan Walker - Faded), "
+                            "'all_the_things_she_said' (t.A.T.u. - All The Things She Said, Hypertechno Remix), "
+                            "'nostalgia_dreams' (Burn Water - Nostalgia Dreams)"
+                        ),
                     ),
                 },
                 required=["song"],
@@ -202,21 +211,17 @@ async def chat(body: ChatMessage):
 
     history = load_history()
 
-    # Build Gemini conversation history
-    gemini_history = []
+    # Build contents array for generate_content (avoids broken start_chat in deprecated SDK)
+    contents = []
     for m in history:
-        gemini_history.append({
-            "role": m["role"],
-            "parts": [m["text"]]
-        })
+        contents.append({"role": m["role"], "parts": [{"text": m["text"]}]})
+    contents.append({"role": "user", "parts": [{"text": user_input}]})
 
     model = genai.GenerativeModel(
         model_name=MODEL,
         system_instruction=SYSTEM_PROMPT,
         tools=AVATAR_TOOLS,
     )
-
-    chat_session = model.start_chat(history=gemini_history)
 
     actions = []
     reply_text = ""
@@ -225,23 +230,27 @@ async def chat(body: ChatMessage):
         """Extract text and function calls from a Gemini response."""
         texts = []
         fn_calls = []
-        for candidate in response.candidates:
-            for part in candidate.content.parts:
-                # Check for text
-                if hasattr(part, 'text') and part.text:
-                    texts.append(part.text)
-                # Check for function call
-                if hasattr(part, 'function_call') and part.function_call.name:
-                    fn_name = part.function_call.name
-                    fn_args = dict(part.function_call.args) if part.function_call.args else {}
-                    fn_calls.append((fn_name, fn_args))
+        try:
+            for candidate in response.candidates:
+                for part in candidate.content.parts:
+                    txt = getattr(part, "text", None)
+                    if txt:
+                        texts.append(txt)
+                    fc = getattr(part, "function_call", None)
+                    fc_name = getattr(fc, "name", "") if fc else ""
+                    if fc_name:
+                        args = dict(fc.args) if getattr(fc, "args", None) else {}
+                        fn_calls.append((fc_name, args))
+        except Exception as ex:
+            print(f"[chat] extract_parts error: {ex}", flush=True)
         return texts, fn_calls
 
     try:
-        response = chat_session.send_message(user_input)
-        print(f"[chat] user: {user_input!r}", flush=True)
+        print(f"[chat] user: {user_input!r}, history_turns: {len(contents)}", flush=True)
+        response = model.generate_content(contents)
+        print(f"[chat] response: candidates={len(response.candidates)}, parts={len(response.candidates[0].content.parts) if response.candidates else 'N/A'}", flush=True)
 
-        # Handle function calls in a loop (Gemini may chain multiple)
+        # Handle function calls in a loop (model may chain multiple rounds)
         max_rounds = 5
         for round_num in range(max_rounds):
             texts, function_calls = extract_parts(response)
@@ -256,7 +265,10 @@ async def chat(body: ChatMessage):
             if not function_calls:
                 break
 
-            # Process all function calls and send results back together
+            # Process all function calls and send results back
+            # Append the model's response (with function calls) to contents
+            contents.append(response.candidates[0].content)
+
             result_parts = []
             for fn_name, fn_args in function_calls:
                 tool_result = resolve_tool_call(fn_name, fn_args)
@@ -269,12 +281,14 @@ async def chat(body: ChatMessage):
                     ))
                 )
 
-            response = chat_session.send_message(
-                genai.protos.Content(parts=result_parts)
-            )
+            if not result_parts:
+                break
 
-        # After the loop, extract any remaining text from the final response
-        # (only if we broke out of the loop after tool calls)
+            # Append function responses as a user turn and generate again
+            contents.append({"role": "user", "parts": result_parts})
+            response = model.generate_content(contents)
+
+        # Extract text from the final response after tool round
         if function_calls:
             final_texts, _ = extract_parts(response)
             for t in final_texts:
@@ -284,7 +298,6 @@ async def chat(body: ChatMessage):
 
     except Exception as e:
         print(f"[chat] ERROR: {type(e).__name__}: {e}", flush=True)
-        import traceback
         traceback.print_exc()
         if not reply_text:
             reply_text = "Sorry, I had a little glitch. Try again?"
@@ -449,11 +462,20 @@ async def voice_websocket(websocket: WebSocket):
         print("[voice] Session ended")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    html_path = Path(__file__).resolve().parent / "static" / "index.html"
-    return html_path.read_text()
-
-
-# Mount static AFTER all routes so /api/* and /ws/* are matched first
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+@app.get("/api/debug")
+async def debug_info():
+    """Return model context for the debug panel."""
+    history = load_history()
+    tool_names = []
+    for tool in AVATAR_TOOLS:
+        for fd in tool.function_declarations:
+            tool_names.append(fd.name)
+    return {
+        "model": MODEL,
+        "system_prompt": SYSTEM_PROMPT[:500] + ("..." if len(SYSTEM_PROMPT) > 500 else ""),
+        "system_prompt_full": SYSTEM_PROMPT,
+        "tools": tool_names,
+        "history_length": len(history),
+        "history_last_5": history[-5:] if history else [],
+        "anim_aliases": ANIM_ALIASES,
+    }

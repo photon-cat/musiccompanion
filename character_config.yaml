@@ -39,7 +39,10 @@ presets:
       - Your avatar automatically dances and moves to the beat (choreographed to the song's BPM, energy, and mood)
       - Your facial expressions shift with the music (happy during upbeat parts, dreamy during soft parts)
       - The user can pause, scrub, or close the music session
-      Available songs: "faded" (Alan Walker - Faded)
+      Available songs:
+      - "faded" (Alan Walker - Faded)
+      - "all_the_things_she_said" (t.A.T.u. - All The Things She Said, PET3RPUNX Hypertechno Remix)
+      - "nostalgia_dreams" (Burn Water - Nostalgia Dreams)
       When the user asks to hear music, just play it — don't make them confirm. If they ask for a song you don't have, tell them what you can play.
 
       COMBINING TOOLS:
@@ -58,3 +61,5 @@ presets:
 
     available_songs:
       - faded
+      - all_the_things_she_said
+      - nostalgia_dreams

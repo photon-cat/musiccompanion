@@ -1,6 +1,5 @@
 export const MODELS = {
   urusa: { url: "/models/urusa.glb", label: "Urusa" },
-  riko: { url: "/models/model.vrm", label: "Riko" },
 } as const;
 
 export type ModelName = keyof typeof MODELS;

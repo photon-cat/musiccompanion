@@ -65,7 +65,6 @@ let idleTime = 0;
 
 const MODELS = {
   urusa: { url: '/static/models/urusa.glb', type: 'vrm', label: 'Urusa' },
-  riko:  { url: '/static/models/model.vrm', type: 'vrm', label: 'Riko' },
 };
 
 const VRMA_ANIMS = {

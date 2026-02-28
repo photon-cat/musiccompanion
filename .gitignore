@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# 3D assets (managed separately)
+ani/

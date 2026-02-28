@@ -17,11 +17,14 @@ export interface UseVoiceReturn {
 
 interface UseVoiceOptions {
   onAction?: (action: { type: string; [key: string]: unknown }) => void;
+  onLog?: (type: "user" | "gemini" | "tool_call" | "tool_result" | "action" | "error", content: string) => void;
 }
 
 export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
   const onActionRef = useRef(options?.onAction);
   onActionRef.current = options?.onAction;
+  const onLogRef = useRef(options?.onLog);
+  onLogRef.current = options?.onLog;
   const [voiceConnected, setVoiceConnected] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -40,16 +43,21 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const nextPlayTimeRef = useRef(0);
   const talkingUntilRef = useRef(0);
+  const speakingRef = useRef(false);
 
   const connectVoice = useCallback(() => {
     setVoiceStatus("Connecting voice...");
+    // Next.js rewrites don't support WebSocket upgrades, so connect
+    // directly to the FastAPI backend on port 8000.
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${location.host}/ws/voice`);
+    const host = location.hostname + ":8000";
+    const ws = new WebSocket(`${proto}//${host}/ws/voice`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setVoiceStatus("Setting up voice...");
       ws.send(JSON.stringify({ type: "set_voice", voice: selectedVoice }));
+      onLogRef.current?.("action", `[voice] connecting with voice: ${selectedVoice}`);
     };
 
     ws.onmessage = (e) => {
@@ -57,32 +65,43 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
       if (msg.type === "ready") {
         setVoiceConnected(true);
         setVoiceStatus(`Voice: ${selectedVoice}`);
+        onLogRef.current?.("action", `[voice] connected`);
       } else if (msg.type === "audio") {
         setSpeaking(true);
+        speakingRef.current = true;
         queueAudio(msg.data);
         talkingUntilRef.current = performance.now() + 2000;
+      } else if (msg.type === "text") {
+        onLogRef.current?.("gemini", `[voice] ${msg.text}`);
       } else if (msg.type === "action") {
         console.log("[voice] action from Gemini:", msg.action);
+        onLogRef.current?.("tool_call", `[voice] ${msg.action?.type}(${JSON.stringify(msg.action)})`);
         if (onActionRef.current && msg.action) {
           onActionRef.current(msg.action);
         }
       } else if (msg.type === "turn_complete") {
         nextPlayTimeRef.current = 0;
-        setTimeout(() => setSpeaking(false), 300);
+        setTimeout(() => { setSpeaking(false); speakingRef.current = false; }, 300);
+        onLogRef.current?.("action", `[voice] turn complete`);
       } else if (msg.type === "error") {
         setVoiceStatus("Voice error: " + msg.message);
+        onLogRef.current?.("error", `[voice] ${msg.message}`);
       }
     };
 
     ws.onclose = () => {
       setVoiceConnected(false);
+      onLogRef.current?.("action", `[voice] disconnected`);
       if (!document.hidden) {
         setVoiceStatus("Voice disconnected - reconnecting...");
         setTimeout(() => connectVoice(), 3000);
       }
     };
 
-    ws.onerror = () => setVoiceStatus("Voice connection error");
+    ws.onerror = () => {
+      setVoiceStatus("Voice connection error");
+      onLogRef.current?.("error", `[voice] connection error`);
+    };
   }, [selectedVoice]);
 
   const queueAudio = useCallback((b64data: string) => {
@@ -160,6 +179,8 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
       worklet.port.onmessage = (e) => {
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        // Don't send mic audio while Aria is speaking to prevent echo loop
+        if (speakingRef.current) return;
         const newData = new Int16Array(e.data);
         const merged = new Int16Array(sendBuffer.length + newData.length);
         merged.set(sendBuffer);
@@ -179,8 +200,11 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
 
       setMicActive(true);
       setVoiceStatus(`Mic on - ${selectedVoice}`);
+      onLogRef.current?.("user", `[voice] mic on`);
     } catch (err: unknown) {
-      setVoiceStatus("Mic error: " + (err instanceof Error ? err.message : String(err)));
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setVoiceStatus("Mic error: " + errMsg);
+      onLogRef.current?.("error", `[voice] mic error: ${errMsg}`);
     }
   }, [voiceConnected, selectedVoice]);
 
@@ -188,6 +212,7 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
     if (micActive) {
       stopMic();
       if (voiceConnected) setVoiceStatus(`Voice: ${selectedVoice}`);
+      onLogRef.current?.("user", `[voice] mic off`);
     } else {
       startMic();
     }
@@ -208,6 +233,7 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
     const ws = wsRef.current;
     if (voiceConnected && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "text", text }));
+      onLogRef.current?.("user", `[voice] ${text}`);
     }
   }, [voiceConnected]);
 

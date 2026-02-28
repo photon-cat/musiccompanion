@@ -32,18 +32,19 @@ export default function Workbench() {
   const [lastActions, setLastActions] = useState<{ type: string; [key: string]: unknown }[]>([]);
   const [geminiLog, setGeminiLog] = useState<LogEntry[]>([]);
 
+  const addLog = useCallback((type: LogEntry["type"], content: string) => {
+    setGeminiLog(prev => [...prev.slice(-99), createLogEntry(type, content)]);
+  }, []);
+
   const avatarActionRef = useRef<((type: string, params: Record<string, unknown>) => void) | null>(null);
   const chatAddMessageRef = useRef<((role: "user" | "assistant" | "system", text: string) => void) | null>(null);
   const playMusicByNameRef = useRef<((songName: string) => void) | null>(null);
   const voice = useVoice({
     onAction: (action) => avatarActionRef.current?.(action.type, action),
+    onLog: addLog,
   });
   const faceTrack = useFaceTrack();
   const [faceContextEnabled, setFaceContextEnabled] = useState(false);
-
-  const addLog = useCallback((type: LogEntry["type"], content: string) => {
-    setGeminiLog(prev => [...prev.slice(-99), createLogEntry(type, content)]);
-  }, []);
 
   const handleStartMusic = useCallback(async (song: SongInfo) => {
     const res = await fetch(song.script_url);

@@ -548,6 +548,12 @@ async def voice_websocket(websocket: WebSocket):
                                 "type": "audio",
                                 "data": part["inlineData"]["data"],
                             })
+                        if "text" in part and part["text"]:
+                            print(f"[voice] gemini text: {part['text'][:100]!r}")
+                            await websocket.send_json({
+                                "type": "text",
+                                "text": part["text"],
+                            })
 
                     if server_content.get("turnComplete"):
                         await websocket.send_json({"type": "turn_complete"})

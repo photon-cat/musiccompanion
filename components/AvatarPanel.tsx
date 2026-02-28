@@ -422,6 +422,7 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
     const { intensity, head_bob, sway_amount, pose } = directive;
     const bpm = getTempoAt(script, t);
     const beatFreq = bpm / 60;
+    const beat = t * beatFreq; // continuous beat count
 
     const head = vrm.humanoid.getRawBoneNode("head");
     const spine = vrm.humanoid.getRawBoneNode("spine");
@@ -429,28 +430,89 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
     const hips = vrm.humanoid.getRawBoneNode("hips");
     const leftArm = vrm.humanoid.getRawBoneNode("leftUpperArm");
     const rightArm = vrm.humanoid.getRawBoneNode("rightUpperArm");
+    const leftForearm = vrm.humanoid.getRawBoneNode("leftLowerArm");
+    const rightForearm = vrm.humanoid.getRawBoneNode("rightLowerArm");
+    const leftShoulder = vrm.humanoid.getRawBoneNode("leftShoulder");
+    const rightShoulder = vrm.humanoid.getRawBoneNode("rightShoulder");
 
+    // Base head movement — always present, scales with head_bob
     if (head) {
-      head.rotation.x += Math.sin(t * beatFreq * Math.PI * 2) * head_bob * 0.12;
-      head.rotation.z += Math.sin(t * beatFreq * Math.PI) * head_bob * 0.03;
+      head.rotation.x += Math.sin(beat * Math.PI * 2) * head_bob * 0.12;
+      head.rotation.z += Math.sin(beat * Math.PI) * head_bob * 0.04;
     }
-    if (spine) spine.rotation.z += Math.sin(t * beatFreq * Math.PI) * sway_amount * 0.08;
+    // Base spine sway — always present
+    if (spine) spine.rotation.z += Math.sin(beat * Math.PI) * sway_amount * 0.08;
 
-    if (pose === "dancing" || pose === "energetic") {
-      if (hips) hips.position.y += Math.abs(Math.sin(t * beatFreq * Math.PI * 2)) * intensity * 0.02;
-      if (leftArm) leftArm.rotation.z += Math.sin(t * beatFreq * Math.PI) * intensity * 0.12;
-      if (rightArm) rightArm.rotation.z -= Math.sin(t * beatFreq * Math.PI) * intensity * 0.12;
-      if (chest) chest.rotation.y += Math.sin(t * beatFreq * Math.PI * 0.5) * intensity * 0.04;
+    if (pose === "dancing") {
+      // Hip bounce — sharp on-beat bounce (using abs(sin) for snappy feel)
+      if (hips) {
+        const bounce = Math.pow(Math.abs(Math.sin(beat * Math.PI)), 1.5);
+        hips.position.y += bounce * intensity * 0.025;
+      }
+      // Alternating arm swings — left and right offset by half beat
+      if (leftArm) {
+        leftArm.rotation.z += Math.sin(beat * Math.PI) * intensity * 0.18;
+        leftArm.rotation.x += Math.sin(beat * Math.PI * 0.5) * intensity * 0.06;
+      }
+      if (rightArm) {
+        rightArm.rotation.z -= Math.sin(beat * Math.PI + Math.PI * 0.5) * intensity * 0.18;
+        rightArm.rotation.x += Math.cos(beat * Math.PI * 0.5) * intensity * 0.06;
+      }
+      // Forearm pump on strong beats
+      if (leftForearm) leftForearm.rotation.x += Math.sin(beat * Math.PI * 2) * intensity * 0.08;
+      if (rightForearm) rightForearm.rotation.x += Math.cos(beat * Math.PI * 2) * intensity * 0.08;
+      // Chest twist — slower groove, adds body rotation
+      if (chest) {
+        chest.rotation.y += Math.sin(beat * Math.PI * 0.5) * intensity * 0.06;
+        chest.rotation.x += Math.sin(beat * Math.PI) * intensity * 0.02;
+      }
+      // Shoulder groove
+      if (leftShoulder) leftShoulder.rotation.z += Math.sin(beat * Math.PI) * intensity * 0.04;
+      if (rightShoulder) rightShoulder.rotation.z -= Math.sin(beat * Math.PI) * intensity * 0.04;
+      // Extra head groove during dancing
+      if (head) head.rotation.y += Math.sin(beat * Math.PI * 0.5) * intensity * 0.04;
     }
+
+    if (pose === "energetic") {
+      // Controlled bounce — less wild than dancing
+      if (hips) hips.position.y += Math.abs(Math.sin(beat * Math.PI * 2)) * intensity * 0.015;
+      // Arms pump rhythmically
+      if (leftArm) leftArm.rotation.z += Math.sin(beat * Math.PI) * intensity * 0.12;
+      if (rightArm) rightArm.rotation.z -= Math.sin(beat * Math.PI) * intensity * 0.12;
+      // Chest engagement
+      if (chest) chest.rotation.y += Math.sin(beat * Math.PI * 0.5) * intensity * 0.04;
+    }
+
     if (pose === "dramatic") {
-      if (chest) chest.rotation.z += Math.sin(t * beatFreq * Math.PI * 0.5) * intensity * 0.06;
-      if (head) head.rotation.y += Math.sin(t * beatFreq * Math.PI * 0.25) * intensity * 0.06;
+      // Wide, sweeping chest movements
+      if (chest) {
+        chest.rotation.z += Math.sin(beat * Math.PI * 0.5) * intensity * 0.08;
+        chest.rotation.y += Math.sin(beat * Math.PI * 0.25) * intensity * 0.05;
+      }
+      // Slow dramatic head turns
+      if (head) head.rotation.y += Math.sin(beat * Math.PI * 0.25) * intensity * 0.08;
+      // Arms out slightly
+      if (leftArm) leftArm.rotation.z += Math.sin(beat * Math.PI * 0.5) * intensity * 0.06;
+      if (rightArm) rightArm.rotation.z -= Math.sin(beat * Math.PI * 0.5) * intensity * 0.06;
     }
+
     if (pose === "nodding" && head) {
-      head.rotation.x += Math.sin(t * beatFreq * Math.PI * 2) * head_bob * 0.06;
+      head.rotation.x += Math.sin(beat * Math.PI * 2) * head_bob * 0.08;
+      // Subtle shoulder movement while nodding
+      if (leftShoulder) leftShoulder.rotation.y += Math.sin(beat * Math.PI) * head_bob * 0.02;
+      if (rightShoulder) rightShoulder.rotation.y -= Math.sin(beat * Math.PI) * head_bob * 0.02;
     }
-    if ((pose === "winding_down" || pose === "winding down") && spine) {
-      spine.rotation.z += Math.sin(t * 0.5) * sway_amount * 0.04;
+
+    if (pose === "reflective") {
+      // Very gentle, slow breathing-like motion
+      if (chest) chest.rotation.x += Math.sin(t * 0.8) * 0.015;
+      if (spine) spine.rotation.z += Math.sin(t * 0.4) * sway_amount * 0.03;
+      if (head) head.rotation.x += Math.sin(t * 0.6) * 0.01;
+    }
+
+    if ((pose === "winding_down" || pose === "winding down")) {
+      if (spine) spine.rotation.z += Math.sin(t * 0.5) * sway_amount * 0.04;
+      if (head) head.rotation.x += Math.sin(t * 0.3) * 0.008;
     }
   }
 

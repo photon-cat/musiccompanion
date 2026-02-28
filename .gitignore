@@ -3,3 +3,14 @@
 
 # 3D assets (managed separately)
 ani/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Large model files
+*.vrm
+*.glb
+*.fbx
+chat_history.json

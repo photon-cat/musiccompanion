@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riko Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    height: 100vh;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+  }
+  /* Left panel - 3D avatar */
+  #avatar-panel {
+    width: 45%;
+    height: 100vh;
+    position: relative;
+    background: linear-gradient(180deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+  }
+  #avatar-panel canvas { display: block; }
+  #avatar-label {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(233, 69, 96, 0.8);
+    padding: 6px 18px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  #loading-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 15, 35, 0.9);
+    z-index: 10;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #loading-overlay .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #333;
+    border-top-color: #e94560;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Right panel - chat */
+  #chat-panel {
+    width: 55%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    border-left: 2px solid #e94560;
+  }
+  header {
+    background: #16213e;
+    padding: 16px 24px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 1.4rem; color: #e94560; }
+  header button {
+    background: #e94560;
+    border: none;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  header button:hover { background: #c73650; }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .msg {
+    max-width: 85%;
+    padding: 10px 16px;
+    border-radius: 16px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: #0f3460;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: #533483;
+    border-bottom-left-radius: 4px;
+  }
+  .msg .role {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  #input-area {
+    background: #16213e;
+    padding: 16px 24px;
+    display: flex;
+    gap: 12px;
+    border-top: 1px solid #333;
+  }
+  #input-area textarea {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #eee;
+    font-size: 1rem;
+    resize: none;
+    height: 44px;
+    font-family: inherit;
+  }
+  #input-area textarea:focus { outline: none; border-color: #e94560; }
+  #input-area button {
+    background: #e94560;
+    border: none;
+    color: white;
+    padding: 0 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #input-area button:hover:not(:disabled) { background: #c73650; }
+  .typing { opacity: 0.5; font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- Left: 3D Avatar -->
+<div id="avatar-panel">
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div>Loading model...</div>
+  </div>
+  <div id="avatar-label">Riko</div>
+</div>
+
+<!-- Right: Chat -->
+<div id="chat-panel">
+  <header>
+    <h1>Riko Chat</h1>
+    <button onclick="clearChat()">Clear History</button>
+  </header>
+  <div id="chat"></div>
+  <div id="input-area">
+    <textarea id="msg" placeholder="Type a message..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+    <button id="send-btn" onclick="send()">Send</button>
+  </div>
+</div>
+
+<!-- Three.js + VRM -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+const container = document.getElementById('avatar-panel');
+const loadingOverlay = document.getElementById('loading-overlay');
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.insertBefore(renderer.domElement, container.firstChild);
+
+// Camera - framed for upper body
+const camera = new THREE.PerspectiveCamera(25, container.clientWidth / container.clientHeight, 0.1, 20.0);
+camera.position.set(0.0, 1.3, 3.0);
+
+// Controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.screenSpacePanning = true;
+controls.target.set(0.0, 1.2, 0.0);
+controls.enablePan = false;
+controls.minDistance = 1.5;
+controls.maxDistance = 6;
+controls.update();
+
+// Scene
+const scene = new THREE.Scene();
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const mainLight = new THREE.DirectionalLight(0xffeedd, 2.5);
+mainLight.position.set(1, 2, 3);
+scene.add(mainLight);
+
+const fillLight = new THREE.DirectionalLight(0xaaccff, 1.0);
+fillLight.position.set(-1, 1, -1);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xe94560, 0.8);
+rimLight.position.set(0, 1, -3);
+scene.add(rimLight);
+
+// Ground shadow disc
+const groundGeo = new THREE.CircleGeometry(0.8, 32);
+const groundMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0.01;
+scene.add(ground);
+
+// Load VRM
+let currentVrm = null;
+let mixer = null;
+const loader = new GLTFLoader();
+loader.crossOrigin = 'anonymous';
+loader.register((parser) => new VRMLoaderPlugin(parser));
+
+loader.load(
+  '/static/model.vrm',
+  (gltf) => {
+    const vrm = gltf.userData.vrm;
+    VRMUtils.removeUnnecessaryVertices(gltf.scene);
+    VRMUtils.combineSkeletons(gltf.scene);
+    VRMUtils.combineMorphs(vrm);
+
+    vrm.scene.traverse((obj) => { obj.frustumCulled = false; });
+
+    currentVrm = vrm;
+    scene.add(vrm.scene);
+    loadingOverlay.style.display = 'none';
+
+    // Idle breathing animation
+    startIdleAnimation();
+  },
+  (progress) => {
+    const pct = Math.round(100 * (progress.loaded / progress.total));
+    loadingOverlay.querySelector('div:last-child').textContent = `Loading model... ${pct}%`;
+  },
+  (error) => {
+    console.error('VRM load error:', error);
+    loadingOverlay.querySelector('div:last-child').textContent = 'Failed to load model';
+  }
+);
+
+// Idle animation - gentle breathing + blinking
+let idleTime = 0;
+let blinkTimer = 0;
+let nextBlink = 3;
+
+function startIdleAnimation() {
+  // nothing extra needed, handled in animate loop
+}
+
+// Expose a function for chat to trigger reactions
+window.triggerTalkingAnimation = function() {
+  if (!currentVrm) return;
+  talkingUntil = performance.now() + 2000;
+};
+
+let talkingUntil = 0;
+
+// Animate
+const clock = new THREE.Clock();
+clock.start();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+
+  if (currentVrm) {
+    idleTime += delta;
+
+    // Breathing - subtle body movement
+    const breathe = Math.sin(idleTime * 1.5) * 0.003;
+    currentVrm.scene.position.y = breathe;
+
+    // Blinking
+    blinkTimer += delta;
+    if (blinkTimer > nextBlink) {
+      blinkTimer = 0;
+      nextBlink = 2 + Math.random() * 4;
+      doBlink();
+    }
+
+    // Head sway
+    const headBone = currentVrm.humanoid?.getNormalizedBoneNode('head');
+    if (headBone) {
+      headBone.rotation.z = Math.sin(idleTime * 0.4) * 0.02;
+      headBone.rotation.x = Math.sin(idleTime * 0.3) * 0.01;
+    }
+
+    // Talking reaction
+    if (performance.now() < talkingUntil) {
+      const talkPhase = performance.now() * 0.008;
+      trySetExpression('aa', Math.abs(Math.sin(talkPhase)) * 0.4);
+    } else {
+      trySetExpression('aa', 0);
+    }
+
+    currentVrm.update(delta);
+  }
+
+  renderer.render(scene, camera);
+}
+
+function doBlink() {
+  if (!currentVrm) return;
+  trySetExpression('blink', 1);
+  setTimeout(() => trySetExpression('blink', 0), 120);
+}
+
+function trySetExpression(name, value) {
+  if (!currentVrm?.expressionManager) return;
+  try { currentVrm.expressionManager.setValue(name, value); } catch(e) {}
+}
+
+animate();
+
+// Resize handling
+window.addEventListener('resize', () => {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+</script>
+
+<!-- Chat logic -->
+<script>
+const chat = document.getElementById('chat');
+const msgInput = document.getElementById('msg');
+const sendBtn = document.getElementById('send-btn');
+
+async function loadHistory() {
+  const res = await fetch('/api/history');
+  const data = await res.json();
+  chat.innerHTML = '';
+  data.messages.forEach(m => addMessage(m.role, m.text));
+}
+
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const roleLabel = document.createElement('div');
+  roleLabel.className = 'role';
+  roleLabel.textContent = role === 'user' ? 'You' : 'Riko';
+  div.appendChild(roleLabel);
+  div.appendChild(document.createTextNode(text));
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+async function send() {
+  const text = msgInput.value.trim();
+  if (!text) return;
+  msgInput.value = '';
+  sendBtn.disabled = true;
+  addMessage('user', text);
+  const typing = addMessage('assistant', 'typing...');
+  typing.classList.add('typing');
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: text})
+    });
+    const data = await res.json();
+    typing.remove();
+    addMessage('assistant', data.reply);
+    // Trigger avatar talking animation
+    if (window.triggerTalkingAnimation) window.triggerTalkingAnimation();
+  } catch (e) {
+    typing.remove();
+    addMessage('assistant', 'Error: ' + e.message);
+  }
+  sendBtn.disabled = false;
+  msgInput.focus();
+}
+
+async function clearChat() {
+  await fetch('/api/clear', {method: 'POST'});
+  chat.innerHTML = '';
+}
+
+loadHistory();
+msgInput.focus();
+</script>
+</body>
+</html>

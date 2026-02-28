@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Track State Vector Test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; padding: 16px; }
+  h1 { font-size: 1.2rem; margin-bottom: 10px; color: #888; }
+  #top { display: flex; gap: 16px; flex-wrap: wrap; }
+  #video-wrap { position: relative; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  video { display: block; transform: scaleX(-1); background: #222; }
+  canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); pointer-events: none; }
+  #panel { flex: 1; min-width: 320px; }
+  #controls { margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+  button { background: #222; color: #ccc; border: 1px solid #444; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+  button:hover { background: #333; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #status { font-size: 0.8rem; padding: 3px 10px; border-radius: 12px; }
+  .on { background: #0a3; color: #afa; }
+  .off { background: #522; color: #faa; }
+  .wait { background: #542; color: #fda; }
+
+  /* State vector display */
+  #state-display { margin-bottom: 12px; }
+  .sv-row { display: flex; align-items: center; margin: 2px 0; font-size: 0.8rem; }
+  .sv-label { width: 140px; color: #888; }
+  .sv-val { width: 70px; text-align: right; margin-right: 8px; }
+  .sv-bar-bg { flex: 1; height: 12px; background: #222; border-radius: 3px; overflow: hidden; max-width: 200px; }
+  .sv-bar { height: 100%; border-radius: 3px; transition: width 0.05s; }
+  .head-row .sv-val { color: #f88; }
+  .eye-row .sv-val { color: #7af; }
+  .expr-row .sv-bar { background: #0c6; }
+  .head-row .sv-bar { background: #e45; }
+  .eye-row .sv-bar { background: #38f; }
+
+  /* Log */
+  #log-wrap { margin-top: 12px; }
+  #log-wrap summary { cursor: pointer; font-size: 0.85rem; color: #888; margin-bottom: 4px; }
+  #log { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 8px; height: 260px; overflow-y: auto; font-size: 0.72rem; line-height: 1.5; }
+  .log-entry { border-bottom: 1px solid #1a1a1a; padding: 2px 0; white-space: pre; }
+  .log-ts { color: #555; }
+  .log-head { color: #f88; }
+  .log-eye { color: #7af; }
+  .log-expr { color: #6d8; }
+  #fps { position: absolute; top: 6px; right: 8px; font-size: 0.75rem; color: #0f0; background: #000a; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Face Track — State Vector Test</h1>
+<div id="controls">
+  <button id="startBtn" disabled>Loading model...</button>
+  <button id="stopBtn" disabled>Stop</button>
+  <span id="status" class="wait">loading</span>
+</div>
+
+<div id="top">
+  <div id="video-wrap">
+    <video id="video" width="480" height="360" autoplay playsinline></video>
+    <canvas id="overlay" width="480" height="360"></canvas>
+    <div id="fps">-- fps</div>
+  </div>
+  <div id="panel">
+    <div id="state-display"></div>
+    <details id="log-wrap" open>
+      <summary>Log (<span id="log-count">0</span> entries) <button id="clearLog" style="font-size:0.7rem;padding:2px 8px;">Clear</button></summary>
+      <div id="log"></div>
+    </details>
+  </div>
+</div>
+
+<script type="module">
+// ── Elements ──
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const stateDisplay = document.getElementById('state-display');
+const logEl = document.getElementById('log');
+const logCountEl = document.getElementById('log-count');
+const fpsEl = document.getElementById('fps');
+const clearLogBtn = document.getElementById('clearLog');
+
+let faceLandmarker = null;
+let running = false;
+let animFrame = null;
+let frameCount = 0;
+let logCount = 0;
+let lastFpsTime = performance.now();
+let fpsFrames = 0;
+
+// ── Tracked blendshapes ──
+const BLENDSHAPES = [
+  'jawOpen', 'mouthSmileLeft', 'mouthSmileRight',
+  'eyeBlinkLeft', 'eyeBlinkRight',
+  'browInnerUp', 'browDownLeft', 'browDownRight',
+  'mouthFunnel', 'mouthPucker', 'cheekPuff',
+  'jawLeft', 'jawRight'
+];
+
+// ── Eye landmark indices (MediaPipe face mesh) ──
+// Iris center landmarks: 468-472 (left eye), 473-477 (right eye)
+// 468 = left iris center, 473 = right iris center
+const LEFT_IRIS_CENTER = 468;
+const RIGHT_IRIS_CENTER = 473;
+// Eye corners for reference frame
+const LEFT_EYE_INNER = 133;   // inner corner left eye
+const LEFT_EYE_OUTER = 33;    // outer corner left eye
+const LEFT_EYE_TOP = 159;     // top lid left eye
+const LEFT_EYE_BOTTOM = 145;  // bottom lid left eye
+const RIGHT_EYE_INNER = 362;  // inner corner right eye
+const RIGHT_EYE_OUTER = 263;  // outer corner right eye
+const RIGHT_EYE_TOP = 386;    // top lid right eye
+const RIGHT_EYE_BOTTOM = 374; // bottom lid right eye
+
+const EYE_KEYS = ['gaze_left_x', 'gaze_left_y', 'gaze_right_x', 'gaze_right_y'];
+
+// ── Build state display rows ──
+function initStateDisplay() {
+  const headKeys = ['head_pitch', 'head_yaw', 'head_roll'];
+  let html = '';
+  for (const k of headKeys) {
+    html += `<div class="sv-row head-row" id="row-${k}">
+      <span class="sv-label">${k}</span>
+      <span class="sv-val" id="val-${k}">0.0°</span>
+      <div class="sv-bar-bg"><div class="sv-bar" id="bar-${k}" style="width:50%"></div></div>
+    </div>`;
+  }
+  for (const k of EYE_KEYS) {
+    html += `<div class="sv-row eye-row" id="row-${k}">
+      <span class="sv-label">${k}</span>
+      <span class="sv-val" id="val-${k}">0.00</span>
+      <div class="sv-bar-bg"><div class="sv-bar" id="bar-${k}" style="width:50%"></div></div>
+    </div>`;
+  }
+  for (const k of BLENDSHAPES) {
+    html += `<div class="sv-row expr-row" id="row-${k}">
+      <span class="sv-label">${k}</span>
+      <span class="sv-val" id="val-${k}">0.00</span>
+      <div class="sv-bar-bg"><div class="sv-bar" id="bar-${k}" style="width:0%"></div></div>
+    </div>`;
+  }
+  stateDisplay.innerHTML = html;
+}
+initStateDisplay();
+
+// ── Load model ──
+async function initModel() {
+  try {
+    const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs");
+    const { FaceLandmarker, FilesetResolver } = vision;
+
+    statusEl.textContent = 'loading wasm...';
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+    );
+
+    statusEl.textContent = 'loading model...';
+    faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true
+    });
+
+    statusEl.textContent = 'ready';
+    statusEl.className = 'off';
+    startBtn.textContent = 'Start';
+    startBtn.disabled = false;
+    addLog('Model loaded, ready to track.');
+  } catch (err) {
+    statusEl.textContent = 'model error';
+    statusEl.className = 'off';
+    addLog('ERROR: ' + err.message);
+    console.error(err);
+  }
+}
+initModel();
+
+// ── Compute gaze vector for one eye ──
+// Returns {x, y} in range roughly -1..+1 where:
+//   x: -1 = looking left, +1 = looking right
+//   y: -1 = looking down, +1 = looking up
+function computeGaze(landmarks, irisIdx, innerIdx, outerIdx, topIdx, bottomIdx) {
+  const iris = landmarks[irisIdx];
+  const inner = landmarks[innerIdx];
+  const outer = landmarks[outerIdx];
+  const top = landmarks[topIdx];
+  const bottom = landmarks[bottomIdx];
+
+  // Eye center = midpoint of inner and outer corners
+  const cx = (inner.x + outer.x) / 2;
+  const cy = (inner.y + outer.y) / 2;
+
+  // Eye dimensions for normalization
+  const eyeW = Math.sqrt((outer.x - inner.x) ** 2 + (outer.y - inner.y) ** 2);
+  const eyeH = Math.sqrt((bottom.x - top.x) ** 2 + (bottom.y - top.y) ** 2);
+
+  if (eyeW < 1e-6 || eyeH < 1e-6) return { x: 0, y: 0 };
+
+  // Iris offset from eye center, normalized by eye size
+  const gazeX = (iris.x - cx) / (eyeW / 2);
+  const gazeY = -(iris.y - cy) / (eyeH / 2); // flip Y so up is positive
+
+  // Clamp to reasonable range
+  return {
+    x: Math.max(-1, Math.min(1, gazeX)),
+    y: Math.max(-1, Math.min(1, gazeY))
+  };
+}
+
+// ── Extract state vector ──
+function extractState(result) {
+  const state = {};
+
+  // Head pose from transformation matrix
+  if (result.facialTransformationMatrixes?.length) {
+    const m = result.facialTransformationMatrixes[0].data;
+    const sy = Math.sqrt(m[0]*m[0] + m[4]*m[4]);
+    if (sy > 1e-6) {
+      state.head_pitch = Math.atan2(m[9], m[10]);
+      state.head_yaw   = Math.atan2(-m[8], sy);
+      state.head_roll  = Math.atan2(m[4], m[0]);
+    } else {
+      state.head_pitch = Math.atan2(-m[6], m[5]);
+      state.head_yaw   = Math.atan2(-m[8], sy);
+      state.head_roll  = 0;
+    }
+  } else {
+    state.head_pitch = 0;
+    state.head_yaw = 0;
+    state.head_roll = 0;
+  }
+
+  // Eye gaze from iris landmarks
+  if (result.faceLandmarks?.length) {
+    const lm = result.faceLandmarks[0];
+    // MediaPipe provides 478 landmarks (468 face + 10 iris) when iris is detected
+    if (lm.length > RIGHT_IRIS_CENTER) {
+      const gazeL = computeGaze(lm, LEFT_IRIS_CENTER, LEFT_EYE_INNER, LEFT_EYE_OUTER, LEFT_EYE_TOP, LEFT_EYE_BOTTOM);
+      const gazeR = computeGaze(lm, RIGHT_IRIS_CENTER, RIGHT_EYE_INNER, RIGHT_EYE_OUTER, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM);
+      state.gaze_left_x = gazeL.x;
+      state.gaze_left_y = gazeL.y;
+      state.gaze_right_x = gazeR.x;
+      state.gaze_right_y = gazeR.y;
+    } else {
+      state.gaze_left_x = 0; state.gaze_left_y = 0;
+      state.gaze_right_x = 0; state.gaze_right_y = 0;
+    }
+  } else {
+    state.gaze_left_x = 0; state.gaze_left_y = 0;
+    state.gaze_right_x = 0; state.gaze_right_y = 0;
+  }
+
+  // Blendshapes
+  if (result.faceBlendshapes?.length) {
+    const bs = {};
+    for (const s of result.faceBlendshapes[0].categories) {
+      bs[s.categoryName] = s.score;
+    }
+    for (const name of BLENDSHAPES) {
+      state[name] = bs[name] || 0;
+    }
+  } else {
+    for (const name of BLENDSHAPES) {
+      state[name] = 0;
+    }
+  }
+
+  return state;
+}
+
+// ── Update display ──
+function updateDisplay(state) {
+  for (const [key, val] of Object.entries(state)) {
+    const valEl = document.getElementById('val-' + key);
+    const barEl = document.getElementById('bar-' + key);
+    if (!valEl) continue;
+
+    if (key.startsWith('head_')) {
+      const deg = val * 57.2958;
+      valEl.textContent = (deg >= 0 ? '+' : '') + deg.toFixed(1) + '°';
+      // Map -45..+45 deg to 0..100%
+      barEl.style.width = Math.min(100, Math.max(0, (deg + 45) / 90 * 100)) + '%';
+    } else if (key.startsWith('gaze_')) {
+      valEl.textContent = (val >= 0 ? '+' : '') + val.toFixed(2);
+      // Map -1..+1 to 0..100%
+      barEl.style.width = Math.min(100, Math.max(0, (val + 1) / 2 * 100)) + '%';
+    } else {
+      valEl.textContent = val.toFixed(2);
+      barEl.style.width = (val * 100) + '%';
+    }
+  }
+}
+
+// ── Log ──
+function addLog(msg) {
+  const ts = new Date().toLocaleTimeString('en', { hour12: false, fractionalSecondDigits: 1 });
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+
+  if (typeof msg === 'string') {
+    div.innerHTML = `<span class="log-ts">[${ts}]</span> ${msg}`;
+  } else {
+    // State vector object — format compactly
+    const head = `<span class="log-head">P:${(msg.head_pitch*57.3).toFixed(1)} Y:${(msg.head_yaw*57.3).toFixed(1)} R:${(msg.head_roll*57.3).toFixed(1)}</span>`;
+    const eye = `<span class="log-eye">eyeL:(${msg.gaze_left_x.toFixed(2)},${msg.gaze_left_y.toFixed(2)}) eyeR:(${msg.gaze_right_x.toFixed(2)},${msg.gaze_right_y.toFixed(2)})</span>`;
+    const exprs = BLENDSHAPES.map(k => `${k.replace('mouth','m').replace('eye','e').replace('brow','b').replace('Left','L').replace('Right','R')}:${msg[k].toFixed(2)}`);
+    div.innerHTML = `<span class="log-ts">[${ts}]</span> ${head} ${eye} <span class="log-expr">${exprs.join(' ')}</span>`;
+  }
+
+  logEl.appendChild(div);
+  logCount++;
+  logCountEl.textContent = logCount;
+  // Keep last 500 entries
+  while (logEl.children.length > 500) logEl.removeChild(logEl.firstChild);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+clearLogBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  logEl.innerHTML = '';
+  logCount = 0;
+  logCountEl.textContent = '0';
+});
+
+// ── Draw face landmarks + eye gaze ──
+function drawLandmarks(result) {
+  const W = 480, H = 360;
+  ctx.clearRect(0, 0, W, H);
+  if (!result.faceLandmarks?.length) return;
+  const lm = result.faceLandmarks[0];
+
+  // Draw face mesh points
+  ctx.fillStyle = '#00ff8844';
+  for (let i = 0; i < Math.min(lm.length, 468); i++) {
+    const pt = lm[i];
+    ctx.beginPath();
+    ctx.arc(pt.x * W, pt.y * H, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw eye contours
+  const leftEyeIdx = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
+  const rightEyeIdx = [263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466,263];
+
+  ctx.strokeStyle = '#4488ff66';
+  ctx.lineWidth = 1.5;
+  for (const eyeIdx of [leftEyeIdx, rightEyeIdx]) {
+    ctx.beginPath();
+    for (let i = 0; i < eyeIdx.length; i++) {
+      const pt = lm[eyeIdx[i]];
+      if (i === 0) ctx.moveTo(pt.x * W, pt.y * H);
+      else ctx.lineTo(pt.x * W, pt.y * H);
+    }
+    ctx.stroke();
+  }
+
+  // Draw iris and gaze vectors if iris landmarks available
+  if (lm.length > RIGHT_IRIS_CENTER) {
+    const drawEyeGaze = (irisIdx, innerIdx, outerIdx, topIdx, bottomIdx) => {
+      const iris = lm[irisIdx];
+      const inner = lm[innerIdx];
+      const outer = lm[outerIdx];
+      const ix = iris.x * W, iy = iris.y * H;
+
+      // Compute gaze vector
+      const gaze = computeGaze(lm, irisIdx, innerIdx, outerIdx, topIdx, bottomIdx);
+
+      // Draw gaze arrow offset below the eye (not on the iris)
+      const eyeCx = (inner.x + outer.x) / 2 * W;
+      const bottom = lm[bottomIdx];
+      const originY = bottom.y * H + 14; // below the eye
+      const originX = eyeCx;
+
+      const arrowLen = 30;
+      const ax = originX + gaze.x * arrowLen;
+      const ay = originY - gaze.y * arrowLen;
+
+      // Origin dot
+      ctx.fillStyle = '#4499ff88';
+      ctx.beginPath();
+      ctx.arc(originX, originY, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Gaze line
+      ctx.strokeStyle = '#4499ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(originX, originY);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+
+      // Arrow head
+      const angle = Math.atan2(ay - originY, ax - originX);
+      ctx.fillStyle = '#4499ff';
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 7 * Math.cos(angle - 0.4), ay - 7 * Math.sin(angle - 0.4));
+      ctx.lineTo(ax - 7 * Math.cos(angle + 0.4), ay - 7 * Math.sin(angle + 0.4));
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    drawEyeGaze(LEFT_IRIS_CENTER, LEFT_EYE_INNER, LEFT_EYE_OUTER, LEFT_EYE_TOP, LEFT_EYE_BOTTOM);
+    drawEyeGaze(RIGHT_IRIS_CENTER, RIGHT_EYE_INNER, RIGHT_EYE_OUTER, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM);
+  }
+}
+
+// ── Detection loop ──
+function detect() {
+  if (!running) return;
+  const now = performance.now();
+  const result = faceLandmarker.detectForVideo(video, now);
+
+  drawLandmarks(result);
+
+  if (result.faceLandmarks?.length) {
+    const state = extractState(result);
+    updateDisplay(state);
+
+    frameCount++;
+    // Log every 10 frames
+    if (frameCount % 10 === 0) {
+      addLog(state);
+      // Also log to console
+      console.log('[FaceTrack]', JSON.parse(JSON.stringify(state, (k, v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v)));
+    }
+  }
+
+  // FPS counter
+  fpsFrames++;
+  if (now - lastFpsTime > 1000) {
+    fpsEl.textContent = Math.round(fpsFrames * 1000 / (now - lastFpsTime)) + ' fps';
+    fpsFrames = 0;
+    lastFpsTime = now;
+  }
+
+  animFrame = requestAnimationFrame(detect);
+}
+
+// ── Start / Stop ──
+startBtn.addEventListener('click', async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360 } });
+    video.srcObject = stream;
+    await video.play();
+
+    running = true;
+    frameCount = 0;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    statusEl.textContent = 'tracking';
+    statusEl.className = 'on';
+    addLog('Tracking started.');
+    detect();
+  } catch (err) {
+    addLog('Camera error: ' + err.message);
+    statusEl.textContent = 'camera error';
+    statusEl.className = 'off';
+  }
+});
+
+stopBtn.addEventListener('click', () => {
+  running = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const tracks = video.srcObject?.getTracks();
+  if (tracks) tracks.forEach(t => t.stop());
+  video.srcObject = null;
+  ctx.clearRect(0, 0, 480, 360);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  statusEl.textContent = 'stopped';
+  statusEl.className = 'off';
+  fpsEl.textContent = '-- fps';
+  addLog('Tracking stopped.');
+});
+</script>
+</body>
+</html>

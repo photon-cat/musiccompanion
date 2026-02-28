@@ -1110,463 +1110,463 @@
   "directives": [
     {
       "t": 0.0,
-      "pose": "nodding",
-      "intensity": 0.336,
-      "expression": "happy",
-      "head_bob": 0.3,
-      "sway_amount": 0.302,
-      "eye_state": "open",
-      "description": "Anticipating the upbeat rhythm with an initial happy sway."
+      "pose": "idle",
+      "intensity": 0.15,
+      "head_bob": 0.05,
+      "sway_amount": 0.08,
+      "expression": "dreamy",
+      "eye_state": "half_closed",
+      "description": "Standing still, eyes half-closed, feeling the first synth pulses wash over."
     },
     {
       "t": 4.0,
       "pose": "gentle_sway",
-      "intensity": 0.434,
-      "expression": "happy",
-      "head_bob": 0.218,
-      "sway_amount": 0.391,
-      "eye_state": "open",
-      "description": "Gently swaying to the soft rhythm, a tranquil and happy mood."
+      "intensity": 0.2,
+      "head_bob": 0.1,
+      "sway_amount": 0.15,
+      "expression": "calm",
+      "eye_state": "half_closed",
+      "description": "Slight sway begins, sensing the bass building underneath."
     },
     {
       "t": 8.0,
       "pose": "gentle_sway",
-      "intensity": 0.428,
-      "expression": "happy",
-      "head_bob": 0.266,
-      "sway_amount": 0.385,
+      "intensity": 0.25,
+      "head_bob": 0.15,
+      "sway_amount": 0.2,
+      "expression": "dreamy",
       "eye_state": "open",
-      "description": "Gently swaying to the soft rhythm, a tranquil and happy mood."
+      "description": "Eyes opening, body starting to lock into the rhythm."
     },
     {
       "t": 12.0,
       "pose": "nodding",
-      "intensity": 0.418,
-      "expression": "happy",
-      "head_bob": 0.3,
-      "sway_amount": 0.376,
+      "intensity": 0.3,
+      "head_bob": 0.25,
+      "sway_amount": 0.22,
+      "expression": "calm",
       "eye_state": "open",
-      "description": "Nodding along to the clear beat with an upbeat and active energy."
+      "description": "Head nodding starts, recognizing the familiar melody creeping in."
     },
     {
       "t": 16.0,
-      "pose": "gentle_sway",
-      "intensity": 0.436,
+      "pose": "nodding",
+      "intensity": 0.35,
+      "head_bob": 0.3,
+      "sway_amount": 0.28,
       "expression": "happy",
-      "head_bob": 0.261,
-      "sway_amount": 0.392,
       "eye_state": "open",
-      "description": "Gently swaying to the soft rhythm, a tranquil and happy mood."
+      "description": "Locked into the groove, nodding with purpose as the bass kicks in."
     },
     {
       "t": 20.0,
       "pose": "energetic",
-      "intensity": 0.462,
+      "intensity": 0.42,
+      "head_bob": 0.35,
+      "sway_amount": 0.35,
       "expression": "happy",
-      "head_bob": 0.297,
-      "sway_amount": 0.416,
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Energy rising, shoulders moving, feeling the hypertechno pulse."
     },
     {
       "t": 24.0,
       "pose": "energetic",
-      "intensity": 0.462,
+      "intensity": 0.45,
+      "head_bob": 0.38,
+      "sway_amount": 0.38,
       "expression": "happy",
-      "head_bob": 0.279,
-      "sway_amount": 0.416,
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Full body engagement, arms starting to swing with the beat."
     },
     {
       "t": 28.0,
       "pose": "energetic",
-      "intensity": 0.444,
-      "expression": "happy",
-      "head_bob": 0.286,
-      "sway_amount": 0.399,
+      "intensity": 0.48,
+      "head_bob": 0.4,
+      "sway_amount": 0.4,
+      "expression": "excited",
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Intensity climbing, can feel the drop approaching."
     },
     {
       "t": 32.0,
       "pose": "energetic",
-      "intensity": 0.481,
-      "expression": "happy",
-      "head_bob": 0.324,
-      "sway_amount": 0.433,
+      "intensity": 0.52,
+      "head_bob": 0.42,
+      "sway_amount": 0.45,
+      "expression": "excited",
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Bouncing harder, the bass is getting heavier."
     },
     {
       "t": 36.0,
       "pose": "energetic",
-      "intensity": 0.481,
-      "expression": "happy",
-      "head_bob": 0.32,
-      "sway_amount": 0.433,
+      "intensity": 0.55,
+      "head_bob": 0.45,
+      "sway_amount": 0.48,
+      "expression": "excited",
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Arms pumping, riding the escalating energy."
     },
     {
       "t": 40.0,
       "pose": "energetic",
-      "intensity": 0.459,
-      "expression": "happy",
-      "head_bob": 0.33,
-      "sway_amount": 0.413,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "intensity": 0.58,
+      "head_bob": 0.48,
+      "sway_amount": 0.5,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Eyes wide, feeling every kick drum, body locked to the rhythm."
     },
     {
       "t": 44.0,
       "pose": "energetic",
-      "intensity": 0.469,
-      "expression": "happy",
-      "head_bob": 0.264,
-      "sway_amount": 0.422,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "intensity": 0.6,
+      "head_bob": 0.5,
+      "sway_amount": 0.52,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Building tension, ready to explode."
     },
     {
       "t": 48.0,
-      "pose": "energetic",
-      "intensity": 0.504,
-      "expression": "happy",
-      "head_bob": 0.297,
-      "sway_amount": 0.454,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "pose": "dramatic",
+      "intensity": 0.65,
+      "head_bob": 0.55,
+      "sway_amount": 0.55,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "The build-up is reaching its peak, chest swaying dramatically."
     },
     {
       "t": 52.0,
-      "pose": "energetic",
-      "intensity": 0.457,
-      "expression": "happy",
-      "head_bob": 0.381,
-      "sway_amount": 0.411,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "pose": "dramatic",
+      "intensity": 0.7,
+      "head_bob": 0.6,
+      "sway_amount": 0.58,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Tension at maximum \u2014 the drop is about to hit."
     },
     {
       "t": 56.0,
       "pose": "dancing",
-      "intensity": 0.949,
+      "intensity": 0.95,
+      "head_bob": 0.9,
+      "sway_amount": 0.88,
       "expression": "excited",
-      "head_bob": 0.81,
-      "sway_amount": 0.854,
       "eye_state": "wide",
-      "description": "Bursting into full dance, swept up by the chorus's high energy."
+      "description": "DROP! Full-body dancing, hypertechno bass shaking everything."
     },
     {
       "t": 60.0,
       "pose": "dancing",
-      "intensity": 0.949,
+      "intensity": 1.0,
+      "head_bob": 0.95,
+      "sway_amount": 0.92,
       "expression": "excited",
-      "head_bob": 0.865,
-      "sway_amount": 0.854,
       "eye_state": "wide",
-      "description": "Embracing the infectious energy with full dance moves."
+      "description": "Peak energy! Arms swinging, hips bouncing, total euphoria."
     },
     {
       "t": 64.0,
       "pose": "dancing",
-      "intensity": 0.868,
+      "intensity": 0.9,
+      "head_bob": 0.82,
+      "sway_amount": 0.85,
       "expression": "happy",
-      "head_bob": 0.733,
-      "sway_amount": 0.781,
       "eye_state": "open",
-      "description": "Embracing the infectious energy with full dance moves."
+      "description": "Riding the groove, slight pullback before surging again."
     },
     {
       "t": 68.0,
       "pose": "dancing",
-      "intensity": 0.925,
+      "intensity": 0.97,
+      "head_bob": 0.92,
+      "sway_amount": 0.9,
       "expression": "excited",
-      "head_bob": 0.835,
-      "sway_amount": 0.832,
       "eye_state": "wide",
-      "description": "Embracing the infectious energy with full dance moves."
+      "description": "Second wave of the chorus, even more intense!"
     },
     {
       "t": 72.0,
       "pose": "dancing",
-      "intensity": 0.927,
+      "intensity": 1.0,
+      "head_bob": 0.95,
+      "sway_amount": 0.93,
       "expression": "excited",
-      "head_bob": 0.906,
-      "sway_amount": 0.834,
       "eye_state": "wide",
-      "description": "Embracing the infectious energy with full dance moves."
+      "description": "All the things she said \u2014 dancing through the iconic hook."
     },
     {
       "t": 76.0,
       "pose": "dancing",
-      "intensity": 0.929,
+      "intensity": 0.92,
+      "head_bob": 0.88,
+      "sway_amount": 0.85,
       "expression": "excited",
-      "head_bob": 0.85,
-      "sway_amount": 0.836,
       "eye_state": "wide",
-      "description": "Embracing the infectious energy with full dance moves."
+      "description": "Chorus fading but still fully committed to the dance."
     },
     {
       "t": 80.0,
       "pose": "energetic",
-      "intensity": 0.528,
+      "intensity": 0.5,
+      "head_bob": 0.35,
+      "sway_amount": 0.4,
       "expression": "happy",
-      "head_bob": 0.316,
-      "sway_amount": 0.475,
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Dropping back to a groove, catching breath but staying locked in."
     },
     {
       "t": 84.0,
-      "pose": "energetic",
-      "intensity": 0.455,
-      "expression": "happy",
-      "head_bob": 0.28,
-      "sway_amount": 0.41,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "pose": "nodding",
+      "intensity": 0.4,
+      "head_bob": 0.3,
+      "sway_amount": 0.32,
+      "expression": "dreamy",
+      "eye_state": "half_closed",
+      "description": "Head nod groove, eyes half-closed, vibing to the filtered bass."
     },
     {
       "t": 88.0,
-      "pose": "energetic",
-      "intensity": 0.448,
-      "expression": "happy",
-      "head_bob": 0.301,
-      "sway_amount": 0.403,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "pose": "gentle_sway",
+      "intensity": 0.38,
+      "head_bob": 0.28,
+      "sway_amount": 0.3,
+      "expression": "emotional",
+      "eye_state": "half_closed",
+      "description": "Swaying gently, feeling the emotional weight of the vocals."
     },
     {
       "t": 92.0,
-      "pose": "energetic",
-      "intensity": 0.569,
+      "pose": "nodding",
+      "intensity": 0.48,
+      "head_bob": 0.38,
+      "sway_amount": 0.4,
       "expression": "happy",
-      "head_bob": 0.37,
-      "sway_amount": 0.512,
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Energy creeping back, nodding harder as layers rebuild."
     },
     {
       "t": 96.0,
       "pose": "energetic",
-      "intensity": 0.58,
-      "expression": "happy",
-      "head_bob": 0.347,
-      "sway_amount": 0.522,
+      "intensity": 0.55,
+      "head_bob": 0.42,
+      "sway_amount": 0.48,
+      "expression": "excited",
       "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "description": "Building momentum again, arms starting to move."
     },
     {
       "t": 100.0,
       "pose": "energetic",
-      "intensity": 0.572,
-      "expression": "happy",
-      "head_bob": 0.323,
-      "sway_amount": 0.515,
-      "eye_state": "open",
-      "description": "Moving with enthusiasm, catching the vibrant rhythm and melody."
+      "intensity": 0.62,
+      "head_bob": 0.5,
+      "sway_amount": 0.55,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Here it comes again \u2014 tension mounting for drop 2."
     },
     {
       "t": 104.0,
       "pose": "dancing",
-      "intensity": 0.803,
-      "expression": "happy",
-      "head_bob": 0.697,
-      "sway_amount": 0.723,
-      "eye_state": "open",
-      "description": "Hitting the second chorus with renewed vigor, dancing freely."
+      "intensity": 0.88,
+      "head_bob": 0.78,
+      "sway_amount": 0.8,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Second drop hits! Launching into full dance immediately."
     },
     {
       "t": 108.0,
       "pose": "dancing",
       "intensity": 1.0,
+      "head_bob": 1.0,
+      "sway_amount": 0.95,
       "expression": "excited",
-      "head_bob": 0.95,
-      "sway_amount": 0.9,
       "eye_state": "wide",
-      "description": "Riding the peak energy, truly dancing to the beat."
+      "description": "MAXIMUM INTENSITY \u2014 this is the biggest moment, everything cranked."
     },
     {
       "t": 112.0,
       "pose": "dancing",
-      "intensity": 0.957,
+      "intensity": 0.98,
+      "head_bob": 0.95,
+      "sway_amount": 0.92,
       "expression": "excited",
-      "head_bob": 0.957,
-      "sway_amount": 0.861,
       "eye_state": "wide",
-      "description": "Riding the peak energy, truly dancing to the beat."
+      "description": "Sustaining the peak, full choreography, arms and body in sync."
     },
     {
       "t": 116.0,
       "pose": "dancing",
-      "intensity": 0.871,
-      "expression": "excited",
-      "head_bob": 0.736,
-      "sway_amount": 0.784,
+      "intensity": 0.9,
+      "head_bob": 0.85,
+      "sway_amount": 0.85,
+      "expression": "happy",
       "eye_state": "wide",
-      "description": "Riding the peak energy, truly dancing to the beat."
+      "description": "Slight dynamic shift \u2014 joyful dancing, grinning through the beat."
     },
     {
       "t": 120.0,
       "pose": "dancing",
-      "intensity": 0.925,
+      "intensity": 0.95,
+      "head_bob": 0.92,
+      "sway_amount": 0.9,
       "expression": "excited",
-      "head_bob": 0.872,
-      "sway_amount": 0.832,
       "eye_state": "wide",
-      "description": "Riding the peak energy, truly dancing to the beat."
+      "description": "Back to max, the chorus is relentless."
     },
     {
       "t": 124.0,
       "pose": "dancing",
-      "intensity": 0.929,
+      "intensity": 0.93,
+      "head_bob": 0.88,
+      "sway_amount": 0.88,
       "expression": "excited",
-      "head_bob": 0.844,
-      "sway_amount": 0.836,
       "eye_state": "wide",
-      "description": "Riding the peak energy, truly dancing to the beat."
+      "description": "Still going hard, riding every beat of the hypertechno."
     },
     {
       "t": 128.0,
-      "pose": "energetic",
-      "intensity": 0.521,
-      "expression": "happy",
-      "head_bob": 0.354,
-      "sway_amount": 0.469,
-      "eye_state": "open",
-      "description": "Transitioning through a thoughtful segment, preparing for the next burst."
+      "pose": "dramatic",
+      "intensity": 0.45,
+      "head_bob": 0.25,
+      "sway_amount": 0.35,
+      "expression": "emotional",
+      "eye_state": "half_closed",
+      "description": "Sudden drop to breakdown \u2014 dramatic chest sway, feeling the emotion."
     },
     {
       "t": 132.0,
       "pose": "gentle_sway",
-      "intensity": 0.288,
-      "expression": "happy",
-      "head_bob": 0.3,
-      "sway_amount": 0.3,
-      "eye_state": "half_closed",
-      "description": "A reflective pause, absorbing the brighter tones with a thoughtful expression."
+      "intensity": 0.25,
+      "head_bob": 0.15,
+      "sway_amount": 0.22,
+      "expression": "emotional",
+      "eye_state": "closed",
+      "description": "Eyes closed, swaying slowly, lost in the raw emotion of the moment."
     },
     {
       "t": 136.0,
-      "pose": "nodding",
-      "intensity": 0.304,
-      "expression": "happy",
-      "head_bob": 0.3,
-      "sway_amount": 0.274,
-      "eye_state": "open",
-      "description": "Nodding along to the clear beat with an upbeat and active energy."
+      "pose": "reflective",
+      "intensity": 0.2,
+      "head_bob": 0.1,
+      "sway_amount": 0.18,
+      "expression": "dreamy",
+      "eye_state": "half_closed",
+      "description": "Reflective pause, body barely moving, just breathing with the music."
     },
     {
       "t": 140.0,
-      "pose": "energetic",
-      "intensity": 0.493,
+      "pose": "nodding",
+      "intensity": 0.4,
+      "head_bob": 0.35,
+      "sway_amount": 0.32,
       "expression": "happy",
-      "head_bob": 0.39,
-      "sway_amount": 0.444,
       "eye_state": "open",
-      "description": "Building up energy again with a focused, bright expression."
+      "description": "Eyes snap open, head starts nodding \u2014 the build begins."
     },
     {
       "t": 144.0,
       "pose": "energetic",
-      "intensity": 0.605,
-      "expression": "happy",
-      "head_bob": 0.472,
-      "sway_amount": 0.545,
+      "intensity": 0.55,
+      "head_bob": 0.48,
+      "sway_amount": 0.48,
+      "expression": "excited",
       "eye_state": "open",
-      "description": "Transitioning through a thoughtful segment, preparing for the next burst."
+      "description": "Energy surging back, body tensing with anticipation."
     },
     {
       "t": 148.0,
       "pose": "energetic",
-      "intensity": 0.517,
-      "expression": "happy",
-      "head_bob": 0.378,
-      "sway_amount": 0.465,
-      "eye_state": "open",
-      "description": "Transitioning through a thoughtful segment, preparing for the next burst."
+      "intensity": 0.65,
+      "head_bob": 0.55,
+      "sway_amount": 0.58,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Harder and harder, the snare rolls are building."
     },
     {
       "t": 152.0,
-      "pose": "energetic",
-      "intensity": 0.556,
-      "expression": "happy",
-      "head_bob": 0.435,
-      "sway_amount": 0.5,
-      "eye_state": "open",
-      "description": "Transitioning through a thoughtful segment, preparing for the next burst."
+      "pose": "dramatic",
+      "intensity": 0.75,
+      "head_bob": 0.65,
+      "sway_amount": 0.65,
+      "expression": "excited",
+      "eye_state": "wide",
+      "description": "Maximum tension \u2014 dramatic pose, about to explode into the final drop."
     },
     {
       "t": 156.0,
       "pose": "dancing",
-      "intensity": 0.793,
+      "intensity": 0.92,
+      "head_bob": 0.85,
+      "sway_amount": 0.88,
       "expression": "excited",
-      "head_bob": 0.687,
-      "sway_amount": 0.714,
       "eye_state": "wide",
-      "description": "Entering the final high-energy chorus, dancing with celebratory passion."
+      "description": "FINAL DROP! Full send, dancing with everything."
     },
     {
       "t": 160.0,
       "pose": "dancing",
-      "intensity": 0.932,
+      "intensity": 1.0,
+      "head_bob": 0.98,
+      "sway_amount": 0.95,
       "expression": "excited",
-      "head_bob": 0.852,
-      "sway_amount": 0.839,
       "eye_state": "wide",
-      "description": "Final burst of high energy, celebrating the music with passionate dance."
+      "description": "Absolute peak \u2014 this is the climax, total euphoric abandon."
     },
     {
       "t": 164.0,
       "pose": "dancing",
-      "intensity": 0.93,
+      "intensity": 1.0,
+      "head_bob": 0.95,
+      "sway_amount": 0.95,
       "expression": "excited",
-      "head_bob": 0.835,
-      "sway_amount": 0.837,
       "eye_state": "wide",
-      "description": "Final burst of high energy, celebrating the music with passionate dance."
+      "description": "Sustaining maximum intensity, every beat a celebration."
     },
     {
       "t": 168.0,
       "pose": "dancing",
-      "intensity": 0.93,
-      "expression": "excited",
-      "head_bob": 0.845,
-      "sway_amount": 0.837,
+      "intensity": 0.97,
+      "head_bob": 0.92,
+      "sway_amount": 0.92,
+      "expression": "happy",
       "eye_state": "wide",
-      "description": "Final burst of high energy, celebrating the music with passionate dance."
+      "description": "Pure joy, dancing freely, lost in the music."
     },
     {
       "t": 172.0,
       "pose": "dancing",
-      "intensity": 0.941,
+      "intensity": 0.98,
+      "head_bob": 0.94,
+      "sway_amount": 0.93,
       "expression": "excited",
-      "head_bob": 0.854,
-      "sway_amount": 0.847,
       "eye_state": "wide",
-      "description": "Final burst of high energy, celebrating the music with passionate dance."
+      "description": "One last surge of energy before the end."
     },
     {
       "t": 176.0,
       "pose": "dancing",
-      "intensity": 0.887,
-      "expression": "excited",
-      "head_bob": 0.744,
-      "sway_amount": 0.798,
-      "eye_state": "wide",
-      "description": "Final burst of high energy, celebrating the music with passionate dance."
+      "intensity": 0.85,
+      "head_bob": 0.75,
+      "sway_amount": 0.78,
+      "expression": "happy",
+      "eye_state": "open",
+      "description": "Starting to wind down but still dancing strong."
     },
     {
       "t": 180.0,
       "pose": "winding_down",
-      "intensity": 0.05,
-      "expression": "emotional",
-      "head_bob": 0.033,
-      "sway_amount": 0.045,
+      "intensity": 0.1,
+      "head_bob": 0.05,
+      "sway_amount": 0.08,
+      "expression": "serene",
       "eye_state": "half_closed",
-      "description": "Winding down to a soft, melancholic close, eyes gently closing in reflection."
+      "description": "Music fades... gentle sway, eyes half-closed, basking in the afterglow."
     }
   ]
 }

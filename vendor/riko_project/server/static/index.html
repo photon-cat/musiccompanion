@@ -59,6 +59,36 @@
     border-color: #e94560;
     color: #fff;
   }
+  #anim-switcher {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 90%;
+  }
+  #anim-switcher button {
+    background: rgba(22, 33, 62, 0.85);
+    border: 1.5px solid #555;
+    color: #ccc;
+    padding: 5px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    backdrop-filter: blur(4px);
+  }
+  #anim-switcher button:hover { border-color: #e94560; color: #fff; }
+  #anim-switcher button.active {
+    background: rgba(233, 69, 96, 0.85);
+    border-color: #e94560;
+    color: #fff;
+  }
   #loading-overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -170,20 +200,88 @@
   #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
   #input-area button:hover:not(:disabled) { background: #c73650; }
   .typing { opacity: 0.5; font-style: italic; }
+  #settings-toggle {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 20;
+    background: rgba(22, 33, 62, 0.85);
+    border: 1.5px solid #555;
+    color: #ccc;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #settings-toggle:hover { border-color: #e94560; color: #fff; }
+  #settings-panel {
+    display: none;
+    position: absolute;
+    top: 50px;
+    right: 12px;
+    z-index: 25;
+    background: rgba(15, 15, 35, 0.95);
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 14px;
+    width: 220px;
+    backdrop-filter: blur(8px);
+  }
+  #settings-panel.open { display: block; }
+  #settings-panel label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #aaa;
+    margin-bottom: 8px;
+  }
+  #settings-panel input[type="range"] {
+    width: 110px;
+    accent-color: #e94560;
+  }
+  #settings-panel .val {
+    font-size: 0.7rem;
+    color: #888;
+    width: 28px;
+    text-align: right;
+  }
 </style>
 </head>
 <body>
 
 <div id="avatar-panel">
   <div id="model-switcher">
-    <button class="active" onclick="switchModel('ani')">Ani</button>
+    <button class="active" onclick="switchModel('urusa')">Urusa</button>
     <button onclick="switchModel('riko')">Riko</button>
   </div>
   <div id="loading-overlay">
     <div class="spinner"></div>
     <div>Loading model...</div>
   </div>
-  <div id="avatar-label">Ani</div>
+  <div id="anim-switcher">
+    <button class="active" data-anim="idle_loop" onclick="switchAnim('idle_loop')">Idle</button>
+    <button data-anim="VRMA_01" onclick="switchAnim('VRMA_01')">Show</button>
+    <button data-anim="VRMA_02" onclick="switchAnim('VRMA_02')">Greet</button>
+    <button data-anim="VRMA_03" onclick="switchAnim('VRMA_03')">Peace</button>
+    <button data-anim="VRMA_04" onclick="switchAnim('VRMA_04')">Shoot</button>
+    <button data-anim="VRMA_05" onclick="switchAnim('VRMA_05')">Spin</button>
+    <button data-anim="VRMA_06" onclick="switchAnim('VRMA_06')">Pose</button>
+    <button data-anim="VRMA_07" onclick="switchAnim('VRMA_07')">Squat</button>
+    <button data-anim="appearing" onclick="switchAnim('appearing')">Appear</button>
+    <button data-anim="waiting" onclick="switchAnim('waiting')">Wait</button>
+    <button data-anim="liked" onclick="switchAnim('liked')">Liked</button>
+  </div>
+  <button id="settings-toggle" onclick="document.getElementById('settings-panel').classList.toggle('open')">&#9881;</button>
+  <div id="settings-panel">
+    <label>Ambient <input type="range" id="s-ambient" min="0" max="3" step="0.1" value="1.0"> <span class="val">1.0</span></label>
+    <label>Direct <input type="range" id="s-direct" min="0" max="3" step="0.1" value="1.0"> <span class="val">1.0</span></label>
+    <label>Exposure <input type="range" id="s-exposure" min="0.5" max="2" step="0.05" value="0.9"> <span class="val">0.9</span></label>
+  </div>
+  <div id="avatar-label">Urusa</div>
 </div>
 
 <div id="chat-panel">
@@ -203,7 +301,8 @@
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js",
+    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3/lib/three-vrm-animation.module.min.js"
   }
 }
 </script>
@@ -213,6 +312,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 
 const container = document.getElementById('avatar-panel');
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -221,8 +321,8 @@ const avatarLabel = document.getElementById('avatar-label');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.insertBefore(renderer.domElement, container.firstChild);
 
 const camera = new THREE.PerspectiveCamera(25, container.clientWidth / container.clientHeight, 0.1, 100.0);
@@ -238,16 +338,25 @@ controls.update();
 
 const scene = new THREE.Scene();
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-const mainLight = new THREE.DirectionalLight(0xffeedd, 2.5);
-mainLight.position.set(1, 2, 3);
+// VRM/MToon lighting - ambient-heavy with soft directional
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+scene.add(ambientLight);
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+mainLight.position.set(0, 1, 2);
 scene.add(mainLight);
-const fillLight = new THREE.DirectionalLight(0xaaccff, 1.0);
-fillLight.position.set(-1, 1, -1);
-scene.add(fillLight);
-const rimLight = new THREE.DirectionalLight(0xe94560, 0.8);
-rimLight.position.set(0, 1, -3);
-scene.add(rimLight);
+renderer.toneMappingExposure = 0.9;
+
+// Settings controls
+document.querySelectorAll('#settings-panel input').forEach(input => {
+  const valSpan = input.parentElement.querySelector('.val');
+  input.addEventListener('input', () => {
+    valSpan.textContent = parseFloat(input.value).toFixed(1);
+    const id = input.id;
+    if (id === 's-ambient') ambientLight.intensity = parseFloat(input.value);
+    if (id === 's-direct') mainLight.intensity = parseFloat(input.value);
+    if (id === 's-exposure') renderer.toneMappingExposure = parseFloat(input.value);
+  });
+});
 
 const groundGeo = new THREE.CircleGeometry(0.8, 32);
 const groundMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
@@ -256,28 +365,109 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0.01;
 scene.add(ground);
 
-// Model state
+// ---- State ----
 let currentModel = null;
 let currentVrm = null;
 let mixer = null;
 let activeModelName = null;
+let currentAction = null;
+let currentAnimName = 'idle_loop';
 let idleTime = 0;
-let baseY = 0;
 
 const MODELS = {
-  ani:  { url: '/static/ani_model.glb', type: 'glb',  label: 'Ani' },
-  riko: { url: '/static/model.vrm',     type: 'vrm',  label: 'Riko' },
+  urusa: { url: '/static/urusa.glb',  type: 'vrm', label: 'Urusa' },
+  riko:  { url: '/static/model.vrm',  type: 'vrm', label: 'Riko' },
 };
 
+// VRMA animation files
+const VRMA_ANIMS = {
+  idle_loop: { url: '/static/vrma/idle_loop.vrma',           loop: true },
+  VRMA_01:   { url: '/static/vrma/VRMA_01.vrma',             loop: false },
+  VRMA_02:   { url: '/static/vrma/VRMA_02.vrma',             loop: false },
+  VRMA_03:   { url: '/static/vrma/VRMA_03.vrma',             loop: false },
+  VRMA_04:   { url: '/static/vrma/VRMA_04.vrma',             loop: false },
+  VRMA_05:   { url: '/static/vrma/VRMA_05.vrma',             loop: false },
+  VRMA_06:   { url: '/static/vrma/VRMA_06.vrma',             loop: false },
+  VRMA_07:   { url: '/static/vrma/VRMA_07.vrma',             loop: false },
+  appearing: { url: '/static/vrma/appearing-7KKFBBJ2.vrma',  loop: false },
+  waiting:   { url: '/static/vrma/waiting-I3CZ3FBD.vrma',    loop: true },
+  liked:     { url: '/static/vrma/liked-JMZZ3B47.vrma',      loop: false },
+};
+
+// Cache loaded VRMAnimation objects
+const animCache = {};
+
+async function loadVRMA(url) {
+  if (animCache[url]) return animCache[url];
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+  return new Promise((resolve, reject) => {
+    loader.load(url, (gltf) => {
+      const vrmAnim = gltf.userData.vrmAnimations?.[0];
+      if (vrmAnim) {
+        animCache[url] = vrmAnim;
+        resolve(vrmAnim);
+      } else {
+        reject(new Error('No VRMAnimation in ' + url));
+      }
+    }, undefined, reject);
+  });
+}
+
+async function playVRMAnim(animName) {
+  if (!currentVrm) return;
+  const animDef = VRMA_ANIMS[animName];
+  if (!animDef) { console.warn('Unknown anim:', animName); return; }
+
+  try {
+    const vrmAnim = await loadVRMA(animDef.url);
+    const clip = createVRMAnimationClip(vrmAnim, currentVrm);
+
+    if (!mixer) mixer = new THREE.AnimationMixer(currentVrm.scene);
+
+    const newAction = mixer.clipAction(clip);
+    newAction.setLoop(animDef.loop ? THREE.LoopRepeat : THREE.LoopOnce);
+    if (!animDef.loop) newAction.clampWhenFinished = true;
+
+    if (currentAction) {
+      newAction.reset().play();
+      currentAction.crossFadeTo(newAction, 0.35, true);
+    } else {
+      newAction.reset().play();
+    }
+
+    // One-shot animations return to idle when done
+    if (!animDef.loop) {
+      const onFinished = (e) => {
+        if (e.action === newAction) {
+          mixer.removeEventListener('finished', onFinished);
+          window.switchAnim('idle_loop');
+        }
+      };
+      mixer.addEventListener('finished', onFinished);
+    }
+
+    currentAction = newAction;
+    currentAnimName = animName;
+    console.log('Playing:', animName);
+  } catch (err) {
+    console.error('Anim load failed:', animName, err);
+  }
+}
+
+// ---- Model loading ----
 function clearCurrentModel() {
   if (currentModel) {
     scene.remove(currentModel);
     currentModel = null;
   }
+  if (mixer) {
+    mixer.stopAllAction();
+    mixer = null;
+  }
   currentVrm = null;
-  mixer = null;
+  currentAction = null;
   idleTime = 0;
-  baseY = 0;
 }
 
 function loadModel(name) {
@@ -290,45 +480,51 @@ function loadModel(name) {
   loadingOverlay.querySelector('div:last-child').textContent = `Loading ${modelDef.label}...`;
   avatarLabel.textContent = modelDef.label;
 
-  // Update switcher buttons
   document.querySelectorAll('#model-switcher button').forEach(btn => {
     btn.classList.toggle('active', btn.textContent.toLowerCase() === name);
   });
 
   const loader = new GLTFLoader();
-
-  if (modelDef.type === 'vrm') {
-    loader.register((parser) => new VRMLoaderPlugin(parser));
-  }
+  // Always register VRM plugin - GLB with VRM data will be parsed, plain GLB ignored gracefully
+  loader.register((parser) => new VRMLoaderPlugin(parser));
 
   loader.load(
     modelDef.url,
-    (gltf) => {
-      if (activeModelName !== name) return; // switched away while loading
+    async (gltf) => {
+      if (activeModelName !== name) return;
 
-      if (modelDef.type === 'vrm') {
-        const vrm = gltf.userData.vrm;
+      const vrm = gltf.userData.vrm;
+
+      if (vrm) {
+        // VRM model (or GLB with VRM extension)
         VRMUtils.removeUnnecessaryVertices(gltf.scene);
         VRMUtils.combineSkeletons(gltf.scene);
         VRMUtils.combineMorphs(vrm);
         vrm.scene.traverse((obj) => { obj.frustumCulled = false; });
+
+        // VRM0 models face +Z, rotate 180 to face the camera
+        vrm.scene.rotation.y = Math.PI;
+
         currentVrm = vrm;
         currentModel = vrm.scene;
         scene.add(currentModel);
 
-        controls.target.set(0.0, 1.2, 0.0);
-        camera.position.set(0.0, 1.3, 3.5);
+        // Wait a frame for idle anim to settle, then center
+        await new Promise(r => setTimeout(r, 100));
+        const posedBox = new THREE.Box3().setFromObject(currentModel);
+        const posedCenter = posedBox.getCenter(new THREE.Vector3());
+        controls.target.set(posedCenter.x, posedCenter.y + 0.1, posedCenter.z);
+        camera.position.set(posedCenter.x, posedCenter.y + 0.1, posedCenter.z + 3.5);
         controls.update();
-        baseY = 0;
-      } else {
-        // GLB
-        currentModel = gltf.scene;
 
+        // Auto-play idle animation
+        await playVRMAnim('idle_loop');
+      } else {
+        // Plain GLB fallback - scale and center
+        currentModel = gltf.scene;
         const box = new THREE.Box3().setFromObject(currentModel);
         const size = box.getSize(new THREE.Vector3());
-
-        const targetHeight = 2.0;
-        const scale = targetHeight / size.y;
+        const scale = 2.0 / size.y;
         currentModel.scale.setScalar(scale);
 
         const scaledBox = new THREE.Box3().setFromObject(currentModel);
@@ -342,20 +538,19 @@ function loadModel(name) {
         controls.target.copy(finalCenter);
         camera.position.set(0, finalCenter.y, 3.5);
         controls.update();
-        baseY = currentModel.position.y;
 
         currentModel.traverse((obj) => { obj.frustumCulled = false; });
         scene.add(currentModel);
 
-        if (gltf.animations && gltf.animations.length > 0) {
+        // Play embedded animations if present
+        if (gltf.animations?.length > 0) {
           mixer = new THREE.AnimationMixer(currentModel);
-          const action = mixer.clipAction(gltf.animations[0]);
-          action.play();
+          mixer.clipAction(gltf.animations[0]).play();
         }
       }
 
       loadingOverlay.style.display = 'none';
-      console.log(`${modelDef.label} loaded`);
+      console.log(`${modelDef.label} loaded, VRM: ${!!vrm}`);
     },
     (progress) => {
       if (progress.total > 0) {
@@ -370,51 +565,77 @@ function loadModel(name) {
   );
 }
 
-// Expose switch function globally
+// ---- Global API ----
 window.switchModel = function(name) { loadModel(name); };
 
-// Expose talking trigger
+window.switchAnim = function(name) {
+  currentAnimName = name;
+  document.querySelectorAll('#anim-switcher button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.anim === name);
+  });
+  playVRMAnim(name);
+};
+
 let talkingUntil = 0;
 window.triggerTalkingAnimation = function() {
   talkingUntil = performance.now() + 2000;
 };
 
-// Animate
+// ---- Render loop ----
 let blinkTimer = 0;
-let nextBlink = 3;
+let nextBlink = 2 + Math.random() * 3;
+let blinkPhase = -1; // -1 = not blinking, 0..1 = blink progress
+const BLINK_CLOSE_DUR = 0.06;  // seconds to close eyes
+const BLINK_HOLD_DUR  = 0.04;  // seconds held shut
+const BLINK_OPEN_DUR  = 0.12;  // seconds to open eyes
+const BLINK_TOTAL = BLINK_CLOSE_DUR + BLINK_HOLD_DUR + BLINK_OPEN_DUR;
+
+function getBlinkValue(phase) {
+  if (phase < 0) return 0;
+  if (phase < BLINK_CLOSE_DUR) {
+    // Closing - ease in (quadratic)
+    const t = phase / BLINK_CLOSE_DUR;
+    return t * t;
+  }
+  if (phase < BLINK_CLOSE_DUR + BLINK_HOLD_DUR) {
+    return 1;
+  }
+  // Opening - ease out (quadratic)
+  const t = (phase - BLINK_CLOSE_DUR - BLINK_HOLD_DUR) / BLINK_OPEN_DUR;
+  const inv = 1 - t;
+  return inv * inv;
+}
+
 const clock = new THREE.Clock();
 clock.start();
 
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
+  idleTime += delta;
 
   if (mixer) mixer.update(delta);
 
-  if (currentModel) {
-    idleTime += delta;
-    const breathe = Math.sin(idleTime * 1.5) * 0.002;
-    currentModel.position.y = baseY + breathe;
-  }
-
   if (currentVrm) {
-    // Blinking
+    // Smooth blinking
     blinkTimer += delta;
-    if (blinkTimer > nextBlink) {
+    if (blinkPhase >= 0) {
+      blinkPhase += delta;
+      if (blinkPhase >= BLINK_TOTAL) {
+        blinkPhase = -1;
+        trySetExpression('blink', 0);
+      } else {
+        trySetExpression('blink', getBlinkValue(blinkPhase));
+      }
+    } else if (blinkTimer > nextBlink) {
       blinkTimer = 0;
-      nextBlink = 2 + Math.random() * 4;
-      trySetExpression('blink', 1);
-      setTimeout(() => trySetExpression('blink', 0), 120);
+      nextBlink = 2.5 + Math.random() * 4;
+      blinkPhase = 0;
+      // Occasional double blink
+      if (Math.random() < 0.2) nextBlink = 0.3;
     }
 
-    // Head sway
-    const headBone = currentVrm.humanoid?.getNormalizedBoneNode('head');
-    if (headBone) {
-      headBone.rotation.z = Math.sin(idleTime * 0.4) * 0.02;
-      headBone.rotation.x = Math.sin(idleTime * 0.3) * 0.01;
-    }
-
-    // Talking
+    // Talking mouth
     if (performance.now() < talkingUntil) {
       const talkPhase = performance.now() * 0.008;
       trySetExpression('aa', Math.abs(Math.sin(talkPhase)) * 0.4);
@@ -444,8 +665,8 @@ window.addEventListener('resize', () => {
   renderer.setSize(w, h);
 });
 
-// Load Ani by default
-loadModel('ani');
+// Load default model
+loadModel('urusa');
 </script>
 
 <script>

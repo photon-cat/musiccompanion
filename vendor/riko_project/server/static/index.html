@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Riko Chat</title>
+<title>Aria</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -286,7 +286,7 @@
 
 <div id="chat-panel">
   <header>
-    <h1>Riko Chat</h1>
+    <h1>Aria</h1>
     <button onclick="clearChat()">Clear History</button>
   </header>
   <div id="chat"></div>
@@ -686,7 +686,7 @@ function addMessage(role, text) {
   div.className = `msg ${role}`;
   const roleLabel = document.createElement('div');
   roleLabel.className = 'role';
-  roleLabel.textContent = role === 'user' ? 'You' : 'Riko';
+  roleLabel.textContent = role === 'user' ? 'You' : 'Aria';
   div.appendChild(roleLabel);
   div.appendChild(document.createTextNode(text));
   chat.appendChild(div);

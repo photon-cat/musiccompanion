@@ -1,0 +1,45 @@
+:root {
+  --bg-body: #000000;
+  --bg-panel: #1a1a1a;
+  --bg-header: #161616;
+  --bg-input: #222;
+  --bg-user-msg: #2a2a2a;
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+  --accent-glow: rgba(245, 158, 11, 0.4);
+  --accent-subtle: rgba(245, 158, 11, 0.35);
+  --accent-bg: rgba(245, 158, 11, 0.1);
+  --text-primary: #ddd;
+  --text-secondary: #999;
+  --text-muted: #666;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --success: #22c55e;
+  --error: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg-body);
+  color: var(--text-primary);
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Oxygen,
+    Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 6px rgba(34, 197, 94, 0.15); }
+  to { box-shadow: 0 0 14px rgba(34, 197, 94, 0.35); }
+}

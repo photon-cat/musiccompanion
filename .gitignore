@@ -1,21 +1,46 @@
 # macOS
 .DS_Store
 
-# 3D assets (managed separately)
-ani/
-
-# Node
+# dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Python
+# next.js
+.next/
+out/
+
+# build
+dist/
+
+# env
+.env
+.env.local
+
+# python
 venv/
 __pycache__/
 *.pyc
+chat_history.json
 
-# Large model files
+# Large assets (managed separately)
+public/models/
+public/vrma/
+public/music/*.mp3
 *.vrm
 *.glb
 *.fbx
-chat_history.json
-.env
 *.mp3
+*.vrma
+
+# vendored / unrelated
+sparkbench/
+vroid_animations/
+ani/
+
+# debug
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/

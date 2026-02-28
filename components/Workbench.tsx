@@ -5,7 +5,7 @@ import styles from "./Workbench.module.css";
 import AvatarPanel from "./AvatarPanel";
 import AriaChat from "./AriaChat";
 import MusicPlayer from "./MusicPlayer";
-import DebugPanel from "./DebugPanel";
+import DebugPanel, { createLogEntry, type LogEntry } from "./DebugPanel";
 import { useVoice } from "@/hooks/useVoice";
 import { useFaceTrack } from "@/hooks/useFaceTrack";
 import type { MusicScript } from "@/lib/music";
@@ -19,6 +19,7 @@ export interface AvatarControls {
 
 export default function Workbench() {
   const [chatWidth, setChatWidth] = useState(550);
+  const [debugOpen, setDebugOpen] = useState(true);
   const dividerRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const avatarControlsRef = useRef<AvatarControls | null>(null);
 
@@ -27,12 +28,20 @@ export default function Workbench() {
   const [musicActive, setMusicActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Track actions for debug panel
+  // Track actions and logs for debug panel
   const [lastActions, setLastActions] = useState<{ type: string; [key: string]: unknown }[]>([]);
+  const [geminiLog, setGeminiLog] = useState<LogEntry[]>([]);
 
-  const voice = useVoice();
+  const avatarActionRef = useRef<((type: string, params: Record<string, unknown>) => void) | null>(null);
+  const voice = useVoice({
+    onAction: (action) => avatarActionRef.current?.(action.type, action),
+  });
   const faceTrack = useFaceTrack();
   const [faceContextEnabled, setFaceContextEnabled] = useState(false);
+
+  const addLog = useCallback((type: LogEntry["type"], content: string) => {
+    setGeminiLog(prev => [...prev.slice(-99), createLogEntry(type, content)]);
+  }, []);
 
   const handleStartMusic = useCallback(async (song: SongInfo) => {
     const res = await fetch(song.script_url);
@@ -43,7 +52,8 @@ export default function Workbench() {
       audioRef.current.src = song.audio_url!;
       audioRef.current.play();
     }
-  }, []);
+    addLog("action", `Playing: ${song.name}`);
+  }, [addLog]);
 
   const handleStopMusic = useCallback(() => {
     setMusicActive(false);
@@ -56,11 +66,15 @@ export default function Workbench() {
 
   const handleAvatarAction = useCallback((type: string, params: Record<string, unknown>) => {
     const ctrl = avatarControlsRef.current;
+    console.log(`[workbench] handleAvatarAction type=${type}`, params, "ctrl=", !!ctrl);
     if (!ctrl) return;
     if (type === "play_animation") ctrl.switchAnim(params.animation as string);
     if (type === "set_expression") ctrl.setExpression(params.expression as string, (params.intensity as number) || 0.6);
+    if (type === "trigger_talking") ctrl.triggerTalking();
     setLastActions(prev => [...prev.slice(-19), { type, ...params }]);
-  }, []);
+    addLog("action", `${type}: ${type === "play_animation" ? params.animation : type === "set_expression" ? `${params.expression} @ ${params.intensity}` : JSON.stringify(params)}`);
+  }, [addLog]);
+  avatarActionRef.current = handleAvatarAction;
 
   const handleDividerDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -87,8 +101,22 @@ export default function Workbench() {
   return (
     <div className={styles.workbench}>
       <audio ref={audioRef} preload="auto" onEnded={handleStopMusic} />
-      <DebugPanel lastActions={lastActions} />
       <div className={styles.mainRow}>
+        {debugOpen ? (
+          <div className={styles.debugSidePanel}>
+            <DebugPanel
+              lastActions={lastActions}
+              faceState={faceTrack.faceState}
+              faceActive={faceTrack.active}
+              geminiLog={geminiLog}
+              onClose={() => setDebugOpen(false)}
+            />
+          </div>
+        ) : (
+          <button className={styles.debugToggle} onClick={() => setDebugOpen(true)} title="Open Debug">
+            &#9881;
+          </button>
+        )}
         <div className={styles.avatarContainer}>
           <AvatarPanel
             controlsRef={avatarControlsRef}
@@ -113,6 +141,7 @@ export default function Workbench() {
             faceTrack={faceTrack}
             faceContextEnabled={faceContextEnabled}
             onToggleFaceContext={setFaceContextEnabled}
+            onLog={addLog}
           />
         </div>
       </div>

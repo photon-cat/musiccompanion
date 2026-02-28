@@ -14,6 +14,7 @@ interface AriaChatProps {
   faceTrack: UseFaceTrackReturn;
   faceContextEnabled: boolean;
   onToggleFaceContext: (enabled: boolean) => void;
+  onLog?: (type: "user" | "gemini" | "tool_call" | "tool_result" | "action" | "error", content: string) => void;
 }
 
 interface DisplayMessage {
@@ -25,7 +26,7 @@ interface DisplayMessage {
 let msgCounter = 0;
 function nextId() { return `msg-${++msgCounter}`; }
 
-export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onToggleFaceContext }: AriaChatProps) {
+export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onToggleFaceContext, onLog }: AriaChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -72,6 +73,7 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
     setSending(true);
 
     addMessage("user", text);
+    onLog?.("user", text);
 
     // If voice connected, send via WS
     if (voice.voiceConnected) {
@@ -85,7 +87,10 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
     let messageToSend = text;
     if (faceContextEnabled && faceTrack.active) {
       const faceDesc = faceTrack.describeFace();
-      if (faceDesc) messageToSend = `${faceDesc}\n${text}`;
+      if (faceDesc) {
+        messageToSend = `${faceDesc}\n${text}`;
+        onLog?.("user", `[face context] ${faceDesc}`);
+      }
     }
     const typingId = addMessage("assistant", "typing...");
     try {
@@ -94,9 +99,12 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
       if (data.reply) {
         addMessage("assistant", data.reply);
         voice.triggerTalkingAnimation();
+        onAvatarAction("trigger_talking", {});
+        onLog?.("gemini", data.reply);
       }
       if (data.actions?.length) {
         for (const action of data.actions) {
+          onLog?.("tool_call", `${action.type}(${JSON.stringify(action)})`);
           if (action.type === "play_animation") {
             onAvatarAction("play_animation", { animation: action.animation });
           } else if (action.type === "set_expression") {
@@ -113,12 +121,14 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
       }
     } catch (e: unknown) {
       removeMessage(typingId);
-      addMessage("assistant", "Error: " + (e instanceof Error ? e.message : String(e)));
+      const errMsg = e instanceof Error ? e.message : String(e);
+      addMessage("assistant", "Error: " + errMsg);
+      onLog?.("error", errMsg);
     }
 
     setSending(false);
     inputRef.current?.focus();
-  }, [input, voice, songs, addMessage, removeMessage, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled]);
+  }, [input, voice, songs, addMessage, removeMessage, onAvatarAction, onStartMusic, faceTrack, faceContextEnabled, onLog]);
 
   const handleClear = useCallback(async () => {
     await apiClearChat();

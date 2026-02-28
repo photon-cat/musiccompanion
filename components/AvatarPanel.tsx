@@ -100,47 +100,57 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
   // Play VRMA animation
   const playVRMAnim = useCallback(async (animName: string) => {
     const vrm = vrmRef.current;
-    if (!vrm) return;
+    console.log(`[anim] playVRMAnim("${animName}") vrm=${!!vrm} mixer=${!!mixerRef.current}`);
+    if (!vrm) { console.warn("[anim] No VRM loaded, skipping"); return; }
     const animDef = VRMA_ANIMS[animName];
-    if (!animDef) return;
+    if (!animDef) { console.warn(`[anim] Unknown anim: ${animName}`); return; }
 
     try {
       const vrmAnim = await loadVRMA(animDef.url);
       const clip = createVRMAnimationClip(vrmAnim, vrm);
       if (!mixerRef.current) mixerRef.current = new THREE.AnimationMixer(vrm.scene);
 
+      // Stop all current actions to avoid conflicts
+      const prevAction = currentActionRef.current;
+      if (prevAction) {
+        prevAction.fadeOut(0.35);
+      }
+
       const newAction = mixerRef.current.clipAction(clip);
       newAction.setLoop(animDef.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
       if (!animDef.loop) newAction.clampWhenFinished = true;
-
-      if (currentActionRef.current) {
-        newAction.reset().play();
-        currentActionRef.current.crossFadeTo(newAction, 0.35, true);
-      } else {
-        newAction.reset().play();
-      }
+      newAction.reset().fadeIn(0.35).play();
 
       if (!animDef.loop) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const onFinished = (e: any) => {
           if (e.action === newAction) {
             mixerRef.current?.removeEventListener("finished", onFinished);
-            switchAnim("idle_loop");
+            // Play idle directly via ref to avoid stale closure
+            playIdleRef.current();
           }
         };
         mixerRef.current.addEventListener("finished", onFinished);
       }
 
       currentActionRef.current = newAction;
+      console.log(`[anim] Playing ${animName} (loop=${animDef.loop})`);
     } catch (err) {
-      console.error("Anim load failed:", animName, err);
+      console.error("[anim] Load failed:", animName, err);
     }
   }, [loadVRMA]);
 
   const switchAnim = useCallback((name: string) => {
+    console.log(`[anim] switchAnim("${name}")`);
     setActiveAnim(name);
     playVRMAnim(name);
   }, [playVRMAnim]);
+
+  // Stable ref for idle callback to avoid stale closures in onFinished
+  const playIdleRef = useRef(() => {});
+  useEffect(() => {
+    playIdleRef.current = () => switchAnim("idle_loop");
+  }, [switchAnim]);
 
   // Load model
   const loadModel = useCallback((name: ModelName) => {
@@ -227,13 +237,14 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
 
   // Register controls for parent
   useEffect(() => {
+    console.log("[avatar] Registering controls, switchAnim ref updated");
     controlsRef.current = {
       switchAnim,
       setExpression: (expression: string, intensity = 0.6) => {
         expressionOverrideRef.current = { expression, intensity };
         expressionOverrideUntilRef.current = performance.now() + 4000;
       },
-      triggerTalking: () => { talkingUntilRef.current = performance.now() + 2000; },
+      triggerTalking: () => { talkingUntilRef.current = performance.now() + 4000; },
     };
   }, [controlsRef, switchAnim]);
 
@@ -333,10 +344,12 @@ export default function AvatarPanel({ controlsRef, musicScript, musicActive, aud
             if (Math.random() < 0.2) nextBlinkRef.current = 0.3;
           }
 
-          // Talking
+          // Talking — varied mouth open/close
           if (performance.now() < talkingUntilRef.current) {
-            const tp = performance.now() * 0.008;
-            trySetExpression("aa", Math.abs(Math.sin(tp)) * 0.4);
+            const tp = performance.now() * 0.01;
+            const base = Math.abs(Math.sin(tp)) * 0.5;
+            const variation = Math.abs(Math.sin(tp * 2.7)) * 0.2;
+            trySetExpression("aa", base + variation);
           } else {
             trySetExpression("aa", 0);
           }

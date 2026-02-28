@@ -349,6 +349,90 @@ async def list_music_scripts():
 
 # --- Voice WebSocket proxy (Gemini Live API) ---
 
+# Raw JSON tool declarations for the Live API (mirrors AVATAR_TOOLS)
+VOICE_TOOLS_JSON = [{
+    "function_declarations": [
+        {
+            "name": "play_animation",
+            "description": (
+                "Move your avatar body. Use this constantly to express yourself physically. "
+                "Combine with set_expression for full emotional range."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "animation": {
+                        "type": "STRING",
+                        "description": (
+                            "Which animation to play. Use these friendly names: "
+                            "'wave' (greet/hello), 'show_off' (confident pose), "
+                            "'peace' (peace sign), 'finger_guns' (playful), "
+                            "'spin' (excited spin/dance), 'pose' (cool pose), "
+                            "'squat' (funny squat), 'entrance' (dramatic appear), "
+                            "'sway' (gentle idle sway), 'heart' (love reaction), "
+                            "'idle' (default standing)"
+                        ),
+                    },
+                },
+                "required": ["animation"],
+            },
+        },
+        {
+            "name": "set_expression",
+            "description": (
+                "Change your avatar's facial expression to show emotion. "
+                "Use alongside play_animation for richer reactions. "
+                "Call this in almost every response — you should always be emoting."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "expression": {
+                        "type": "STRING",
+                        "description": (
+                            "Expression: 'happy' (smiling), 'sad' (melancholy), "
+                            "'angry' (rare, dramatic emphasis), 'surprised' (wide-eyed), "
+                            "'relaxed' (calm/serene), 'neutral' (resets face)"
+                        ),
+                    },
+                    "intensity": {
+                        "type": "NUMBER",
+                        "description": (
+                            "Strength from 0.0 (subtle) to 1.0 (full). "
+                            "Use 0.6 for natural, 0.8-1.0 for big reactions."
+                        ),
+                    },
+                },
+                "required": ["expression"],
+            },
+        },
+        {
+            "name": "play_music",
+            "description": (
+                "Start a music session. A player UI appears with play/pause and scrubber. "
+                "Your avatar automatically dances to the beat. "
+                "Just play it when the user asks, don't make them confirm."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "song": {
+                        "type": "STRING",
+                        "description": (
+                            "Song name. Available: "
+                            "'faded' (Alan Walker - Faded), "
+                            "'all_the_things_she_said' (t.A.T.u. - All The Things She Said, Hypertechno Remix), "
+                            "'nostalgia_dreams' (Burn Water - Nostalgia Dreams)"
+                        ),
+                    },
+                },
+                "required": ["song"],
+            },
+        },
+    ]
+}]
+
+
 @app.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -379,11 +463,12 @@ async def voice_websocket(websocket: WebSocket):
                 "system_instruction": {
                     "parts": [{"text": SYSTEM_PROMPT}]
                 },
+                "tools": VOICE_TOOLS_JSON,
             }
         }
         await gemini_ws.send(json.dumps(setup_msg))
         await gemini_ws.recv()
-        print("[voice] Gemini setup complete")
+        print("[voice] Gemini setup complete (with tools)")
         await websocket.send_json({"type": "ready"})
 
         async def browser_to_gemini():
@@ -419,6 +504,41 @@ async def voice_websocket(websocket: WebSocket):
             try:
                 async for message in gemini_ws:
                     resp = json.loads(message if isinstance(message, str) else message.decode())
+
+                    # Handle tool calls from Gemini
+                    tool_call = resp.get("toolCall", {})
+                    fn_calls = tool_call.get("functionCalls", [])
+                    if fn_calls:
+                        fn_responses = []
+                        for fc in fn_calls:
+                            fn_name = fc.get("name", "")
+                            fn_args = fc.get("args", {})
+                            fn_id = fc.get("id", "")
+                            print(f"[voice] tool call: {fn_name}({fn_args})")
+
+                            tool_result = resolve_tool_call(fn_name, fn_args)
+                            if tool_result["action"]:
+                                await websocket.send_json({
+                                    "type": "action",
+                                    "action": tool_result["action"],
+                                })
+
+                            fn_responses.append({
+                                "id": fn_id,
+                                "name": fn_name,
+                                "response": {"result": tool_result["result"]},
+                            })
+
+                        # Send function responses back to Gemini
+                        tool_response_msg = {
+                            "tool_response": {
+                                "function_responses": fn_responses,
+                            }
+                        }
+                        await gemini_ws.send(json.dumps(tool_response_msg))
+                        continue
+
+                    # Handle normal audio/text content
                     server_content = resp.get("serverContent", {})
                     model_turn = server_content.get("modelTurn", {})
                     parts = model_turn.get("parts", [])

@@ -15,7 +15,13 @@ export interface UseVoiceReturn {
   talkingUntil: number;
 }
 
-export function useVoice(): UseVoiceReturn {
+interface UseVoiceOptions {
+  onAction?: (action: { type: string; [key: string]: unknown }) => void;
+}
+
+export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
+  const onActionRef = useRef(options?.onAction);
+  onActionRef.current = options?.onAction;
   const [voiceConnected, setVoiceConnected] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -55,6 +61,11 @@ export function useVoice(): UseVoiceReturn {
         setSpeaking(true);
         queueAudio(msg.data);
         talkingUntilRef.current = performance.now() + 2000;
+      } else if (msg.type === "action") {
+        console.log("[voice] action from Gemini:", msg.action);
+        if (onActionRef.current && msg.action) {
+          onActionRef.current(msg.action);
+        }
       } else if (msg.type === "turn_complete") {
         nextPlayTimeRef.current = 0;
         setTimeout(() => setSpeaking(false), 300);

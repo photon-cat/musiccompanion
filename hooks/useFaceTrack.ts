@@ -98,11 +98,40 @@ export function useFaceTrack(): UseFaceTrackReturn {
       setActive(true);
       setLoading(false);
 
+      // Wait for video to actually be playing with valid frames
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (video.readyState >= 2 && video.videoWidth > 0) resolve();
+          else requestAnimationFrame(check);
+        };
+        check();
+      });
+
+      let lastTimestamp = -1;
+
       // Detection loop
       function detect() {
         if (!videoRef.current || !landmarkerRef.current) return;
         const now = performance.now();
-        const result = landmarkerRef.current.detectForVideo(videoRef.current, now);
+
+        // Skip if video isn't ready or timestamp hasn't advanced
+        if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
+          animFrameRef.current = requestAnimationFrame(detect);
+          return;
+        }
+        if (now <= lastTimestamp) {
+          animFrameRef.current = requestAnimationFrame(detect);
+          return;
+        }
+        lastTimestamp = now;
+
+        let result;
+        try {
+          result = landmarkerRef.current.detectForVideo(videoRef.current, now);
+        } catch {
+          animFrameRef.current = requestAnimationFrame(detect);
+          return;
+        }
 
         if (result.faceBlendshapes?.length && result.facialTransformationMatrixes?.length) {
           const bs = result.faceBlendshapes[0].categories;

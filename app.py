@@ -1,6 +1,3 @@
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 import yaml
 import json
 import os
@@ -12,15 +9,11 @@ from dotenv import load_dotenv
 # Load .env before anything reads env vars
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
-# Also set GOOGLE_API_KEY which genai reads natively
-if os.environ.get("VITE_GEMINI_API_KEY") and not os.environ.get("GOOGLE_API_KEY"):
-    os.environ["GOOGLE_API_KEY"] = os.environ["VITE_GEMINI_API_KEY"]
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import websockets
 
 # Load config relative to project root
@@ -31,7 +24,7 @@ with open(CONFIG_PATH, "r") as f:
 
 # Configure Gemini
 GEMINI_API_KEY = os.environ.get("VITE_GEMINI_API_KEY", "")
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODEL = "gemini-2.5-flash"
 VOICE_MODEL = "models/gemini-2.5-flash-native-audio-latest"
@@ -47,95 +40,98 @@ SYSTEM_PROMPT = char_config["presets"]["default"]["system_prompt"]
 
 app = FastAPI()
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
 PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 MUSIC_DIR = PUBLIC_DIR / "music"
 
 
-# --- Avatar tool definitions for Gemini function calling ---
+# --- Avatar tool definitions for Gemini function calling (new SDK) ---
 
-AVATAR_TOOLS = [
-    genai.protos.Tool(function_declarations=[
-        genai.protos.FunctionDeclaration(
-            name="play_animation",
-            description=(
-                "Move your avatar body. Use this constantly to express yourself physically. "
-                "Combine with set_expression for full emotional range."
-            ),
-            parameters=genai.protos.Schema(
-                type=genai.protos.Type.OBJECT,
-                properties={
-                    "animation": genai.protos.Schema(
-                        type=genai.protos.Type.STRING,
-                        description=(
-                            "Which animation to play. Use these friendly names: "
-                            "'wave' (greet/hello), 'show_off' (confident pose), "
-                            "'peace' (peace sign), 'finger_guns' (playful), "
-                            "'spin' (excited spin/dance), 'pose' (cool pose), "
-                            "'squat' (funny squat), 'entrance' (dramatic appear), "
-                            "'sway' (gentle idle sway), 'heart' (love reaction), "
-                            "'idle' (default standing)"
-                        ),
-                    ),
-                },
-                required=["animation"],
-            ),
+AVATAR_TOOLS = [types.Tool(function_declarations=[
+    types.FunctionDeclaration(
+        name="play_animation",
+        description=(
+            "Move your avatar body. Use this constantly to express yourself physically. "
+            "Combine with set_expression for full emotional range."
         ),
-        genai.protos.FunctionDeclaration(
-            name="set_expression",
-            description=(
-                "Change your avatar's facial expression to show emotion. "
-                "Use alongside play_animation for richer reactions. "
-                "Call this in almost every response — you should always be emoting."
-            ),
-            parameters=genai.protos.Schema(
-                type=genai.protos.Type.OBJECT,
-                properties={
-                    "expression": genai.protos.Schema(
-                        type=genai.protos.Type.STRING,
-                        description=(
-                            "Expression: 'happy' (smiling), 'sad' (melancholy), "
-                            "'angry' (rare, dramatic emphasis), 'surprised' (wide-eyed), "
-                            "'relaxed' (calm/serene), 'neutral' (resets face)"
-                        ),
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "animation": types.Schema(
+                    type="STRING",
+                    description=(
+                        "Which animation to play. Use these friendly names: "
+                        "'wave' (greet/hello), 'show_off' (confident pose), "
+                        "'peace' (peace sign), 'finger_guns' (playful), "
+                        "'spin' (excited spin/dance), 'pose' (cool pose), "
+                        "'squat' (funny squat), 'entrance' (dramatic appear), "
+                        "'sway' (gentle idle sway), 'heart' (love reaction), "
+                        "'idle' (default standing)"
                     ),
-                    "intensity": genai.protos.Schema(
-                        type=genai.protos.Type.NUMBER,
-                        description=(
-                            "Strength from 0.0 (subtle) to 1.0 (full). "
-                            "Use 0.6 for natural, 0.8-1.0 for big reactions."
-                        ),
-                    ),
-                },
-                required=["expression"],
-            ),
+                ),
+            },
+            required=["animation"],
         ),
-        genai.protos.FunctionDeclaration(
-            name="play_music",
-            description=(
-                "Start a music session. A player UI appears with play/pause and scrubber. "
-                "Your avatar automatically dances to the beat — choreographed to the song's BPM, "
-                "energy, and mood. Your expressions shift with the music. "
-                "Just play it when the user asks, don't make them confirm."
-            ),
-            parameters=genai.protos.Schema(
-                type=genai.protos.Type.OBJECT,
-                properties={
-                    "song": genai.protos.Schema(
-                        type=genai.protos.Type.STRING,
-                        description=(
-                            "Song name. Available: "
-                            "'faded' (Alan Walker - Faded), "
-                            "'all_the_things_she_said' (t.A.T.u. - All The Things She Said, Hypertechno Remix), "
-                            "'nostalgia_dreams' (Burn Water - Nostalgia Dreams)"
-                        ),
-                    ),
-                },
-                required=["song"],
-            ),
+    ),
+    types.FunctionDeclaration(
+        name="set_expression",
+        description=(
+            "Change your avatar's facial expression to show emotion. "
+            "Use alongside play_animation for richer reactions. "
+            "Call this in almost every response — you should always be emoting."
         ),
-    ])
-]
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "expression": types.Schema(
+                    type="STRING",
+                    description=(
+                        "Expression: 'happy' (smiling), 'sad' (melancholy), "
+                        "'angry' (rare, dramatic emphasis), 'surprised' (wide-eyed), "
+                        "'relaxed' (calm/serene), 'neutral' (resets face)"
+                    ),
+                ),
+                "intensity": types.Schema(
+                    type="NUMBER",
+                    description=(
+                        "Strength from 0.0 (subtle) to 1.0 (full). "
+                        "Use 0.6 for natural, 0.8-1.0 for big reactions."
+                    ),
+                ),
+            },
+            required=["expression"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="play_music",
+        description=(
+            "Start a music session. A player UI appears with play/pause and scrubber. "
+            "Your avatar automatically dances to the beat — choreographed to the song's BPM, "
+            "energy, and mood. Your expressions shift with the music. "
+            "Just play it when the user asks, don't make them confirm."
+        ),
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "song": types.Schema(
+                    type="STRING",
+                    description=(
+                        "Song name. Available: "
+                        "'faded' (Alan Walker - Faded), "
+                        "'all_the_things_she_said' (t.A.T.u. - All The Things She Said, Hypertechno Remix), "
+                        "'nostalgia_dreams' (Burn Water - Nostalgia Dreams)"
+                    ),
+                ),
+            },
+            required=["song"],
+        ),
+    ),
+])]
+
+GENERATE_CONFIG = types.GenerateContentConfig(
+    system_instruction=SYSTEM_PROMPT,
+    tools=AVATAR_TOOLS,
+    thinking_config=types.ThinkingConfig(thinking_budget=0),
+)
 
 
 class ChatMessage(BaseModel):
@@ -211,17 +207,14 @@ async def chat(body: ChatMessage):
 
     history = load_history()
 
-    # Build contents array for generate_content (avoids broken start_chat in deprecated SDK)
+    # Build contents for generate_content
     contents = []
     for m in history:
-        contents.append({"role": m["role"], "parts": [{"text": m["text"]}]})
-    contents.append({"role": "user", "parts": [{"text": user_input}]})
-
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=SYSTEM_PROMPT,
-        tools=AVATAR_TOOLS,
-    )
+        contents.append(types.Content(
+            role=m["role"],
+            parts=[types.Part(text=m["text"])],
+        ))
+    contents.append(types.Content(role="user", parts=[types.Part(text=user_input)]))
 
     actions = []
     reply_text = ""
@@ -233,24 +226,23 @@ async def chat(body: ChatMessage):
         try:
             for candidate in response.candidates:
                 for part in candidate.content.parts:
-                    txt = getattr(part, "text", None)
-                    if txt:
-                        texts.append(txt)
-                    fc = getattr(part, "function_call", None)
-                    fc_name = getattr(fc, "name", "") if fc else ""
-                    if fc_name:
-                        args = dict(fc.args) if getattr(fc, "args", None) else {}
-                        fn_calls.append((fc_name, args))
+                    if part.text:
+                        texts.append(part.text)
+                    if part.function_call:
+                        name = part.function_call.name
+                        args = dict(part.function_call.args) if part.function_call.args else {}
+                        fn_calls.append((name, args))
         except Exception as ex:
             print(f"[chat] extract_parts error: {ex}", flush=True)
         return texts, fn_calls
 
     try:
-        print(f"[chat] user: {user_input!r}, history_turns: {len(contents)}", flush=True)
-        response = model.generate_content(contents)
-        print(f"[chat] response: candidates={len(response.candidates)}, parts={len(response.candidates[0].content.parts) if response.candidates else 'N/A'}", flush=True)
+        print(f"[chat] user: {user_input!r}", flush=True)
+        response = client.models.generate_content(
+            model=MODEL, contents=contents, config=GENERATE_CONFIG,
+        )
 
-        # Handle function calls in a loop (model may chain multiple rounds)
+        # Handle function calls in a loop
         max_rounds = 5
         for round_num in range(max_rounds):
             texts, function_calls = extract_parts(response)
@@ -266,7 +258,6 @@ async def chat(body: ChatMessage):
                 break
 
             # Process all function calls and send results back
-            # Append the model's response (with function calls) to contents
             contents.append(response.candidates[0].content)
 
             result_parts = []
@@ -274,19 +265,20 @@ async def chat(body: ChatMessage):
                 tool_result = resolve_tool_call(fn_name, fn_args)
                 if tool_result["action"]:
                     actions.append(tool_result["action"])
-                result_parts.append(
-                    genai.protos.Part(function_response=genai.protos.FunctionResponse(
+                result_parts.append(types.Part(
+                    function_response=types.FunctionResponse(
                         name=fn_name,
                         response={"result": tool_result["result"]},
-                    ))
-                )
+                    )
+                ))
 
             if not result_parts:
                 break
 
-            # Append function responses as a user turn and generate again
-            contents.append({"role": "user", "parts": result_parts})
-            response = model.generate_content(contents)
+            contents.append(types.Content(role="user", parts=result_parts))
+            response = client.models.generate_content(
+                model=MODEL, contents=contents, config=GENERATE_CONFIG,
+            )
 
         # Extract text from the final response after tool round
         if function_calls:

@@ -102,8 +102,8 @@ export default function AriaChat({ voice, onAvatarAction, onStartMusic, faceTrac
           } else if (action.type === "set_expression") {
             onAvatarAction("set_expression", { expression: action.expression, intensity: action.intensity });
           } else if (action.type === "play_music") {
-            const songName = (action.song || "").toLowerCase();
-            const song = songs.find((s) => s.name.toLowerCase().includes(songName));
+            const songName = (action.song || "").toLowerCase().replace(/_/g, " ");
+            const song = songs.find((s) => s.name.toLowerCase().includes(songName) || songName.includes(s.name.toLowerCase()));
             if (song?.audio_url) {
               addMessage("system", `Playing ${song.name}...`);
               onStartMusic(song);

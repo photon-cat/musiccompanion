@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { VOICES, PLAYBACK_RATE, CAPTURE_RATE } from "@/lib/constants";
+import { PLAYBACK_RATE, CAPTURE_RATE } from "@/lib/constants";
 import { arrayBufferToBase64, base64ToArrayBuffer, pcm16ToFloat32 } from "@/lib/audio-utils";
 
 export interface UseVoiceReturn {
@@ -44,11 +44,34 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
   const nextPlayTimeRef = useRef(0);
   const talkingUntilRef = useRef(0);
   const speakingRef = useRef(false);
+  // Guard against reconnection after intentional teardown
+  const disposedRef = useRef(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedVoiceRef = useRef(selectedVoice);
+  selectedVoiceRef.current = selectedVoice;
+
+  const closeWs = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      // Remove onclose to prevent reconnection loop
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setVoiceConnected(false);
+  }, []);
 
   const connectVoice = useCallback(() => {
+    if (disposedRef.current) return;
+
+    // Close any existing connection first
+    closeWs();
+
     setVoiceStatus("Connecting voice...");
-    // Next.js rewrites don't support WebSocket upgrades, so connect
-    // directly to the FastAPI backend on port 8000.
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const host = location.hostname + ":8000";
     const ws = new WebSocket(`${proto}//${host}/ws/voice`);
@@ -56,15 +79,15 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
 
     ws.onopen = () => {
       setVoiceStatus("Setting up voice...");
-      ws.send(JSON.stringify({ type: "set_voice", voice: selectedVoice }));
-      onLogRef.current?.("action", `[voice] connecting with voice: ${selectedVoice}`);
+      ws.send(JSON.stringify({ type: "set_voice", voice: selectedVoiceRef.current }));
+      onLogRef.current?.("action", `[voice] connecting with voice: ${selectedVoiceRef.current}`);
     };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       if (msg.type === "ready") {
         setVoiceConnected(true);
-        setVoiceStatus(`Voice: ${selectedVoice}`);
+        setVoiceStatus(`Voice: ${selectedVoiceRef.current}`);
         onLogRef.current?.("action", `[voice] connected`);
       } else if (msg.type === "audio") {
         setSpeaking(true);
@@ -90,11 +113,15 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
     };
 
     ws.onclose = () => {
+      wsRef.current = null;
       setVoiceConnected(false);
       onLogRef.current?.("action", `[voice] disconnected`);
-      if (!document.hidden) {
+      if (!disposedRef.current && !document.hidden) {
         setVoiceStatus("Voice disconnected - reconnecting...");
-        setTimeout(() => connectVoice(), 3000);
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connectVoice();
+        }, 3000);
       }
     };
 
@@ -102,7 +129,7 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
       setVoiceStatus("Voice connection error");
       onLogRef.current?.("error", `[voice] connection error`);
     };
-  }, [selectedVoice]);
+  }, [closeWs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const queueAudio = useCallback((b64data: string) => {
     const bytes = base64ToArrayBuffer(b64data);
@@ -223,11 +250,10 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
     localStorage.setItem("gemini_voice", voice);
     if (voiceConnected) {
       stopMic();
-      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-      setVoiceConnected(false);
+      closeWs();
       setTimeout(() => connectVoice(), 500);
     }
-  }, [voiceConnected, stopMic, connectVoice]);
+  }, [voiceConnected, stopMic, closeWs, connectVoice]);
 
   const sendText = useCallback((text: string) => {
     const ws = wsRef.current;
@@ -242,10 +268,12 @@ export function useVoice(options?: UseVoiceOptions): UseVoiceReturn {
   }, []);
 
   useEffect(() => {
+    disposedRef.current = false;
     connectVoice();
     return () => {
+      disposedRef.current = true;
       stopMic();
-      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+      closeWs();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

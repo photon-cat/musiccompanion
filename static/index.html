@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aria — Music Companion</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="avatar-panel">
+  <div id="model-switcher">
+    <button class="active" onclick="switchModel('urusa')">Urusa</button>
+    <button onclick="switchModel('riko')">Riko</button>
+  </div>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div>Loading model...</div>
+  </div>
+  <div id="anim-switcher">
+    <button class="active" data-anim="idle_loop" onclick="switchAnim('idle_loop')">Idle</button>
+    <button data-anim="VRMA_01" onclick="switchAnim('VRMA_01')">Show</button>
+    <button data-anim="VRMA_02" onclick="switchAnim('VRMA_02')">Greet</button>
+    <button data-anim="VRMA_03" onclick="switchAnim('VRMA_03')">Peace</button>
+    <button data-anim="VRMA_04" onclick="switchAnim('VRMA_04')">Shoot</button>
+    <button data-anim="VRMA_05" onclick="switchAnim('VRMA_05')">Spin</button>
+    <button data-anim="VRMA_06" onclick="switchAnim('VRMA_06')">Pose</button>
+    <button data-anim="VRMA_07" onclick="switchAnim('VRMA_07')">Squat</button>
+    <button data-anim="appearing" onclick="switchAnim('appearing')">Appear</button>
+    <button data-anim="waiting" onclick="switchAnim('waiting')">Wait</button>
+    <button data-anim="liked" onclick="switchAnim('liked')">Liked</button>
+  </div>
+  <button id="settings-toggle" onclick="document.getElementById('settings-panel').classList.toggle('open')">&#9881;</button>
+  <div id="settings-panel">
+    <label>Ambient <input type="range" id="s-ambient" min="0" max="3" step="0.1" value="1.0"> <span class="val">1.0</span></label>
+    <label>Direct <input type="range" id="s-direct" min="0" max="3" step="0.1" value="1.0"> <span class="val">1.0</span></label>
+    <label>Exposure <input type="range" id="s-exposure" min="0.5" max="2" step="0.05" value="0.9"> <span class="val">0.9</span></label>
+  </div>
+
+  <!-- Music Player Overlay -->
+  <div id="music-player">
+    <div id="music-player-top">
+      <button id="music-close-btn" title="End music session">&times;</button>
+      <div id="music-song-title">-</div>
+      <button id="music-play-btn" title="Play/Pause">&#9654;</button>
+      <div id="music-time">0:00 / 0:00</div>
+    </div>
+    <input type="range" id="music-scrubber" min="0" max="100" value="0" step="0.1">
+    <div id="music-directive-label"></div>
+  </div>
+  <audio id="music-audio" preload="auto"></audio>
+
+  <div id="avatar-label">Urusa</div>
+</div>
+
+<div id="chat-panel">
+  <header>
+    <div>
+      <h1>Aria</h1>
+      <div id="voice-status">Not connected</div>
+    </div>
+    <div id="voice-picker">
+      <label for="voice-select">Voice:</label>
+      <select id="voice-select"></select>
+    </div>
+    <div class="header-btns">
+      <button onclick="clearChat()">Clear</button>
+    </div>
+  </header>
+  <div id="chat"></div>
+  <div id="input-area">
+    <div class="input-box">
+      <button id="mic-btn">&#127908;</button>
+      <textarea id="msg" placeholder="Talk to Aria... ask her to play music, dance, or just chat"></textarea>
+      <button class="send-btn" id="send-btn" onclick="send()">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js",
+    "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3/lib/three-vrm-animation.module.min.js"
+  }
+}
+</script>
+
+<script type="module" src="/static/js/avatar.js"></script>
+<script type="module" src="/static/js/music.js"></script>
+<script type="module" src="/static/js/voice.js"></script>
+<script type="module" src="/static/js/chat.js"></script>
+
+</body>
+</html>

@@ -4,6 +4,9 @@
 # 3D assets (managed separately)
 ani/
 
+# Node
+node_modules/
+
 # Python
 venv/
 __pycache__/

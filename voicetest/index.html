@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini Voice Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    text-align: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #1a1a2e;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 1.2rem; color: #8ab4f8; }
+  #status { font-size: 0.75rem; color: #888; }
+
+  #voice-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  #voice-picker label {
+    font-size: 0.75rem;
+    color: #888;
+  }
+  #voice-select {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+    outline: none;
+    cursor: pointer;
+  }
+  #voice-select:focus { border-color: #8ab4f8; }
+
+  #chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .msg {
+    max-width: 80%;
+    padding: 0.6rem 1rem;
+    border-radius: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: #1a3a5c;
+    border-bottom-right-radius: 0.25rem;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: #1a1a2e;
+    border-bottom-left-radius: 0.25rem;
+  }
+  .msg .label {
+    font-size: 0.7rem;
+    color: #666;
+    margin-bottom: 0.2rem;
+  }
+  .msg.assistant .label { color: #8ab4f8; }
+
+  #controls {
+    border-top: 1px solid #1a1a2e;
+    padding: 0.75rem 1rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    background: #0d0d14;
+  }
+
+  #text-input {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 1.5rem;
+    padding: 0.6rem 1rem;
+    color: #e0e0e0;
+    font-size: 0.95rem;
+    outline: none;
+  }
+  #text-input:focus { border-color: #8ab4f8; }
+  #text-input::placeholder { color: #555; }
+
+  #send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: #8ab4f8;
+    color: #0a0a0f;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  #send-btn:hover { background: #aac8ff; }
+
+  #mic-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 2px solid #333;
+    background: #1a1a2e;
+    color: #8ab4f8;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  #mic-btn:hover { border-color: #8ab4f8; }
+  #mic-btn.active {
+    border-color: #4CAF50;
+    background: #1a2e1a;
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
+    animation: glow 1.5s ease-in-out infinite alternate;
+  }
+  #mic-btn.speaking {
+    border-color: #FF9800;
+    background: #2e2a1a;
+    box-shadow: 0 0 15px rgba(255, 152, 0, 0.3);
+  }
+  @keyframes glow {
+    from { box-shadow: 0 0 10px rgba(76, 175, 80, 0.2); }
+    to { box-shadow: 0 0 20px rgba(76, 175, 80, 0.5); }
+  }
+
+  #visualizer {
+    width: 100%;
+    height: 30px;
+    display: block;
+    background: #0a0a0f;
+    border-top: 1px solid #1a1a2e;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Gemini Voice Chat</h1>
+      <div id="status">Not connected</div>
+    </div>
+    <div id="voice-picker">
+      <label for="voice-select">Voice:</label>
+      <select id="voice-select"></select>
+    </div>
+  </header>
+
+  <div id="chat-log"></div>
+
+  <canvas id="visualizer" height="30"></canvas>
+
+  <div id="controls">
+    <button id="mic-btn">🎤</button>
+    <input id="text-input" type="text" placeholder="Type a message..." autocomplete="off" />
+    <button id="send-btn">➤</button>
+  </div>
+
+<script>
+const VOICES = [
+  { name: 'Leda',          style: 'Youthful' },
+  { name: 'Aoede',         style: 'Breezy' },
+  { name: 'Achernar',      style: 'Soft' },
+  { name: 'Enceladus',     style: 'Breathy' },
+  { name: 'Vindemiatrix',  style: 'Gentle' },
+  { name: 'Zephyr',        style: 'Bright' },
+  { name: 'Autonoe',       style: 'Bright' },
+  { name: 'Despina',       style: 'Smooth' },
+  { name: 'Sulafat',       style: 'Warm' },
+  { name: 'Achird',        style: 'Friendly' },
+  { name: 'Sadachbia',     style: 'Lively' },
+  { name: 'Laomedeia',     style: 'Upbeat' },
+  { name: 'Puck',          style: 'Upbeat' },
+  { name: 'Kore',          style: 'Firm' },
+  { name: 'Fenrir',        style: 'Excitable' },
+  { name: 'Charon',        style: 'Informative' },
+  { name: 'Orus',          style: 'Firm' },
+  { name: 'Callirrhoe',    style: 'Easy-going' },
+  { name: 'Iapetus',       style: 'Clear' },
+  { name: 'Umbriel',       style: 'Easy-going' },
+  { name: 'Algieba',       style: 'Smooth' },
+  { name: 'Erinome',       style: 'Clear' },
+  { name: 'Algenib',       style: 'Gravelly' },
+  { name: 'Rasalgethi',    style: 'Informative' },
+  { name: 'Alnilam',       style: 'Firm' },
+  { name: 'Schedar',       style: 'Even' },
+  { name: 'Gacrux',        style: 'Mature' },
+  { name: 'Pulcherrima',   style: 'Forward' },
+  { name: 'Zubenelgenubi', style: 'Casual' },
+  { name: 'Sadaltager',    style: 'Knowledgeable' },
+];
+
+const voiceSelect = document.getElementById('voice-select');
+const micBtn = document.getElementById('mic-btn');
+const sendBtn = document.getElementById('send-btn');
+const textInput = document.getElementById('text-input');
+const statusEl = document.getElementById('status');
+const chatLog = document.getElementById('chat-log');
+const canvas = document.getElementById('visualizer');
+const ctx = canvas.getContext('2d');
+
+// Populate voice dropdown
+VOICES.forEach(v => {
+  const opt = document.createElement('option');
+  opt.value = v.name;
+  opt.textContent = `${v.name} - ${v.style}`;
+  voiceSelect.appendChild(opt);
+});
+
+// Restore last voice from localStorage
+const savedVoice = localStorage.getItem('gemini_voice') || 'Leda';
+voiceSelect.value = savedVoice;
+
+let ws = null;
+let audioCtx = null;
+let mediaStream = null;
+let workletNode = null;
+let micActive = false;
+let isConnected = false;
+
+const PLAYBACK_RATE = 24000;
+const CAPTURE_RATE = 16000;
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const label = document.createElement('div');
+  label.className = 'label';
+  label.textContent = role === 'user' ? 'You' : 'Gemini';
+  const body = document.createElement('div');
+  body.textContent = text;
+  div.appendChild(label);
+  div.appendChild(body);
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return div;
+}
+
+// --- Voice change: reconnect with new voice ---
+voiceSelect.addEventListener('change', () => {
+  localStorage.setItem('gemini_voice', voiceSelect.value);
+  if (isConnected) {
+    addMessage('assistant', `Switching voice to ${voiceSelect.value}...`);
+    reconnect();
+  }
+});
+
+function reconnect() {
+  stopMic();
+  if (ws) { ws.close(); ws = null; }
+  isConnected = false;
+  // onclose handler will auto-reconnect, but let's do it explicitly
+  setTimeout(() => connect(), 500);
+}
+
+// --- Connection ---
+function connect() {
+  setStatus('Connecting...');
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    setStatus('Selecting voice...');
+    // Send voice selection before Gemini setup
+    ws.send(JSON.stringify({ type: 'set_voice', voice: voiceSelect.value }));
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'ready') {
+      isConnected = true;
+      setStatus(`Connected - ${voiceSelect.value}`);
+      textInput.focus();
+    } else if (msg.type === 'audio') {
+      micBtn.classList.add('speaking');
+      queueAudio(msg.data);
+    } else if (msg.type === 'turn_complete') {
+      resetPlayback();
+      setTimeout(() => micBtn.classList.remove('speaking'), 300);
+    } else if (msg.type === 'error') {
+      setStatus('Error: ' + msg.message);
+      addMessage('assistant', 'Error: ' + msg.message);
+    }
+  };
+
+  ws.onclose = () => {
+    isConnected = false;
+    if (!document.hidden) {
+      setStatus('Disconnected - reconnecting...');
+      setTimeout(() => connect(), 2000);
+    }
+  };
+
+  ws.onerror = () => setStatus('Connection error');
+}
+
+// --- Text input ---
+function sendText() {
+  const text = textInput.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  addMessage('user', text);
+  ws.send(JSON.stringify({ type: 'text', text }));
+  textInput.value = '';
+}
+
+sendBtn.addEventListener('click', sendText);
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendText();
+});
+
+// --- Mic toggle ---
+micBtn.addEventListener('click', async () => {
+  if (micActive) {
+    stopMic();
+  } else {
+    await startMic();
+  }
+});
+
+async function startMic() {
+  if (!isConnected) { setStatus('Not connected yet'); return; }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: CAPTURE_RATE, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+
+    audioCtx = new AudioContext({ sampleRate: CAPTURE_RATE });
+
+    const workletCode = `
+      class PCMProcessor extends AudioWorkletProcessor {
+        process(inputs) {
+          const input = inputs[0];
+          if (input.length > 0) {
+            const samples = input[0];
+            const pcm16 = new Int16Array(samples.length);
+            for (let i = 0; i < samples.length; i++) {
+              const s = Math.max(-1, Math.min(1, samples[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
+          }
+          return true;
+        }
+      }
+      registerProcessor('pcm-processor', PCMProcessor);
+    `;
+    const blob = new Blob([workletCode], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(blob);
+    await audioCtx.audioWorklet.addModule(workletUrl);
+    URL.revokeObjectURL(workletUrl);
+
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+
+    let sendBuffer = new Int16Array(0);
+    const CHUNK_SAMPLES = 2048;
+
+    workletNode.port.onmessage = (e) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const newData = new Int16Array(e.data);
+      const merged = new Int16Array(sendBuffer.length + newData.length);
+      merged.set(sendBuffer);
+      merged.set(newData, sendBuffer.length);
+      sendBuffer = merged;
+
+      while (sendBuffer.length >= CHUNK_SAMPLES) {
+        const chunk = sendBuffer.slice(0, CHUNK_SAMPLES);
+        sendBuffer = sendBuffer.slice(CHUNK_SAMPLES);
+        const b64 = arrayBufferToBase64(chunk.buffer);
+        ws.send(JSON.stringify({ type: 'audio', data: b64 }));
+      }
+    };
+
+    source.connect(workletNode);
+    workletNode.connect(audioCtx.destination);
+
+    micActive = true;
+    micBtn.classList.add('active');
+    setStatus(`Mic on - ${voiceSelect.value}`);
+
+  } catch (err) {
+    setStatus('Mic error: ' + err.message);
+    console.error(err);
+  }
+}
+
+function stopMic() {
+  micActive = false;
+  micBtn.classList.remove('active', 'speaking');
+  if (isConnected) setStatus(`Connected - ${voiceSelect.value}`);
+
+  if (workletNode) { workletNode.disconnect(); workletNode = null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+// --- Audio Playback (gapless scheduling) ---
+let playbackCtx = null;
+let nextPlayTime = 0;
+
+function queueAudio(b64data) {
+  const bytes = base64ToArrayBuffer(b64data);
+  const pcm16 = new Int16Array(bytes);
+  const float32 = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i++) {
+    float32[i] = pcm16[i] / 32768;
+  }
+
+  if (!playbackCtx) {
+    playbackCtx = new AudioContext({ sampleRate: PLAYBACK_RATE });
+  }
+
+  const now = playbackCtx.currentTime;
+  if (nextPlayTime < now) {
+    nextPlayTime = now + 0.05;
+  }
+
+  const buffer = playbackCtx.createBuffer(1, float32.length, PLAYBACK_RATE);
+  buffer.getChannelData(0).set(float32);
+
+  const source = playbackCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(playbackCtx.destination);
+  source.start(nextPlayTime);
+
+  nextPlayTime += buffer.duration;
+
+  drawWaveform(float32);
+}
+
+function resetPlayback() {
+  nextPlayTime = 0;
+}
+
+function drawWaveform(samples) {
+  canvas.width = canvas.clientWidth;
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#8ab4f8';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const step = Math.max(1, Math.floor(samples.length / canvas.width));
+  const mid = canvas.height / 2;
+  for (let i = 0; i < canvas.width; i++) {
+    const idx = i * step;
+    const val = idx < samples.length ? samples[idx] : 0;
+    const y = mid + val * mid * 0.9;
+    if (i === 0) ctx.moveTo(i, y);
+    else ctx.lineTo(i, y);
+  }
+  ctx.stroke();
+}
+
+// --- Utilities ---
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// Auto-connect on load
+connect();
+</script>
+</body>
+</html>

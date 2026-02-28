@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Track → Blender</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #eee; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+  h1 { font-size: 1.4rem; margin-bottom: 12px; }
+  #status { padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; margin-bottom: 12px; }
+  .connected { background: #0f5132; color: #75d5a0; }
+  .disconnected { background: #5c1a1a; color: #f5a0a0; }
+  .connecting { background: #5c4a1a; color: #f5dca0; }
+  #container { position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+  video { display: block; transform: scaleX(-1); }
+  canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); pointer-events: none; }
+  #controls { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+  button { background: #16213e; color: #eee; border: 1px solid #444; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+  button:hover { background: #1a3a5c; }
+  #debug { margin-top: 16px; font-family: monospace; font-size: 0.8rem; background: #111; padding: 12px; border-radius: 8px; min-width: 400px; white-space: pre; }
+</style>
+</head>
+<body>
+<h1>Face Track → Blender</h1>
+<div id="status" class="disconnected">Loading MediaPipe...</div>
+<div id="container">
+  <video id="video" width="640" height="480" autoplay playsinline></video>
+  <canvas id="overlay" width="640" height="480"></canvas>
+</div>
+<div id="controls">
+  <button id="startBtn" disabled>Loading...</button>
+  <button id="stopBtn" disabled>Stop</button>
+  <label style="font-size:0.85rem"><input type="checkbox" id="showLandmarks" checked> Show landmarks</label>
+</div>
+<div id="debug">Loading MediaPipe model...</div>
+
+<script type="module">
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const statusEl = document.getElementById('status');
+const debugEl = document.getElementById('debug');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const showLandmarks = document.getElementById('showLandmarks');
+
+let faceLandmarker = null;
+let ws = null;
+let running = false;
+let animFrame = null;
+
+// --- Load MediaPipe immediately ---
+async function initFaceLandmarker() {
+  try {
+    debugEl.textContent = 'Importing MediaPipe vision module...';
+    const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs");
+    const { FaceLandmarker, FilesetResolver } = vision;
+
+    debugEl.textContent = 'Loading WASM runtime...';
+    const filesetResolver = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+    );
+
+    debugEl.textContent = 'Loading face landmarker model...';
+    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true
+    });
+
+    statusEl.textContent = 'Ready - click Start Tracking';
+    statusEl.className = 'connecting';
+    startBtn.textContent = 'Start Tracking';
+    startBtn.disabled = false;
+    debugEl.textContent = 'Model loaded. Ready to track.';
+  } catch (err) {
+    statusEl.textContent = 'Failed to load MediaPipe';
+    statusEl.className = 'disconnected';
+    debugEl.textContent = 'ERROR loading MediaPipe:\n' + err.message + '\n\nMake sure you are serving this page over HTTP, not file://';
+    console.error(err);
+  }
+}
+
+// Start loading right away
+initFaceLandmarker();
+
+// --- WebSocket ---
+function connectWS() {
+  if (ws && ws.readyState <= 1) return;
+  statusEl.textContent = 'Connecting to Blender...';
+  statusEl.className = 'connecting';
+  ws = new WebSocket('ws://localhost:8765');
+  ws.onopen = () => {
+    statusEl.textContent = 'Connected to Blender';
+    statusEl.className = 'connected';
+    debugEl.textContent = 'Connected! Move your face...';
+  };
+  ws.onclose = () => {
+    if (running) {
+      statusEl.textContent = 'Lost connection to Blender';
+      statusEl.className = 'disconnected';
+    }
+  };
+  ws.onerror = (e) => {
+    statusEl.textContent = 'Connection failed - is Blender script running?';
+    statusEl.className = 'disconnected';
+    debugEl.textContent = 'WebSocket error. Make sure:\n1. Blender is open\n2. blender_facetrack.py is running\n3. Port 8765 is not blocked';
+    console.error('WebSocket error:', e);
+  };
+}
+
+// --- Extract face data from blendshapes + transformation matrix ---
+function extractFaceData(result) {
+  const data = {
+    head: { pitch: 0, yaw: 0, roll: 0 },
+    mouth_open: 0, smile: 0,
+    blink_l: 0, blink_r: 0,
+    brow_l: 0, brow_r: 0
+  };
+
+  if (result.facialTransformationMatrixes && result.facialTransformationMatrixes.length > 0) {
+    const m = result.facialTransformationMatrixes[0].data;
+    const sy = Math.sqrt(m[0]*m[0] + m[4]*m[4]);
+    const singular = sy < 1e-6;
+    let pitch, yaw, roll;
+    if (!singular) {
+      pitch = Math.atan2(m[9], m[10]);
+      yaw   = Math.atan2(-m[8], sy);
+      roll  = Math.atan2(m[4], m[0]);
+    } else {
+      pitch = Math.atan2(-m[6], m[5]);
+      yaw   = Math.atan2(-m[8], sy);
+      roll  = 0;
+    }
+    data.head.pitch = pitch;
+    data.head.yaw = yaw;
+    data.head.roll = roll;
+  }
+
+  if (result.faceBlendshapes && result.faceBlendshapes.length > 0) {
+    const bs = {};
+    for (const shape of result.faceBlendshapes[0].categories) {
+      bs[shape.categoryName] = shape.score;
+    }
+    data.mouth_open = bs['jawOpen'] || 0;
+    data.smile = Math.max(bs['mouthSmileLeft'] || 0, bs['mouthSmileRight'] || 0);
+    data.blink_l = bs['eyeBlinkLeft'] || 0;
+    data.blink_r = bs['eyeBlinkRight'] || 0;
+    data.brow_l = bs['browInnerUp'] || 0;
+    data.brow_r = bs['browInnerUp'] || 0;
+  }
+
+  return data;
+}
+
+// --- Draw landmarks ---
+function drawLandmarks(result) {
+  ctx.clearRect(0, 0, 640, 480);
+  if (!showLandmarks.checked || !result.faceLandmarks || !result.faceLandmarks.length) return;
+  const landmarks = result.faceLandmarks[0];
+  ctx.fillStyle = '#00ff8855';
+  for (const pt of landmarks) {
+    ctx.beginPath();
+    ctx.arc(pt.x * 640, pt.y * 480, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#00ff8844';
+  ctx.lineWidth = 1;
+  const oval = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+  ctx.beginPath();
+  for (let i = 0; i < oval.length; i++) {
+    const pt = landmarks[oval[i]];
+    if (i === 0) ctx.moveTo(pt.x * 640, pt.y * 480);
+    else ctx.lineTo(pt.x * 640, pt.y * 480);
+  }
+  ctx.stroke();
+}
+
+// --- Main loop ---
+function detect() {
+  if (!running) return;
+  const now = performance.now();
+  const result = faceLandmarker.detectForVideo(video, now);
+
+  drawLandmarks(result);
+
+  if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+    const faceData = extractFaceData(result);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(faceData));
+    }
+
+    const h = faceData.head;
+    debugEl.textContent =
+      `Head  pitch:${(h.pitch*57.3).toFixed(1)}° yaw:${(h.yaw*57.3).toFixed(1)}° roll:${(h.roll*57.3).toFixed(1)}°\n` +
+      `Mouth open: ${faceData.mouth_open.toFixed(2)}  Smile: ${faceData.smile.toFixed(2)}\n` +
+      `Blink L: ${faceData.blink_l.toFixed(2)}  R: ${faceData.blink_r.toFixed(2)}\n` +
+      `Brow L: ${faceData.brow_l.toFixed(2)}  R: ${faceData.brow_r.toFixed(2)}`;
+  } else {
+    debugEl.textContent = 'No face detected';
+  }
+
+  animFrame = requestAnimationFrame(detect);
+}
+
+// --- Controls ---
+startBtn.addEventListener('click', async () => {
+  try {
+    debugEl.textContent = 'Requesting camera...';
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    video.srcObject = stream;
+    await video.play();
+
+    connectWS();
+    running = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    detect();
+  } catch (err) {
+    debugEl.textContent = 'Camera error: ' + err.message;
+    statusEl.textContent = 'Camera access denied';
+    statusEl.className = 'disconnected';
+  }
+});
+
+stopBtn.addEventListener('click', () => {
+  running = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  if (ws) ws.close();
+  const tracks = video.srcObject?.getTracks();
+  if (tracks) tracks.forEach(t => t.stop());
+  video.srcObject = null;
+  ctx.clearRect(0, 0, 640, 480);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  statusEl.textContent = 'Stopped';
+  statusEl.className = 'disconnected';
+  debugEl.textContent = 'Stopped';
+});
+</script>
+</body>
+</html>

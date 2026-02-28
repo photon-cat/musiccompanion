@@ -15,7 +15,6 @@
     flex-direction: row;
     overflow: hidden;
   }
-  /* Left panel - 3D avatar */
   #avatar-panel {
     width: 45%;
     height: 100vh;
@@ -34,6 +33,31 @@
     font-size: 0.85rem;
     font-weight: 600;
     pointer-events: none;
+  }
+  #model-switcher {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 6px;
+  }
+  #model-switcher button {
+    background: #16213e;
+    border: 2px solid #444;
+    color: #ccc;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  #model-switcher button:hover { border-color: #e94560; color: #fff; }
+  #model-switcher button.active {
+    background: #e94560;
+    border-color: #e94560;
+    color: #fff;
   }
   #loading-overlay {
     position: absolute;
@@ -55,7 +79,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Right panel - chat */
   #chat-panel {
     width: 55%;
     height: 100vh;
@@ -151,16 +174,18 @@
 </head>
 <body>
 
-<!-- Left: 3D Avatar -->
 <div id="avatar-panel">
+  <div id="model-switcher">
+    <button class="active" onclick="switchModel('ani')">Ani</button>
+    <button onclick="switchModel('riko')">Riko</button>
+  </div>
   <div id="loading-overlay">
     <div class="spinner"></div>
     <div>Loading model...</div>
   </div>
-  <div id="avatar-label">Riko</div>
+  <div id="avatar-label">Ani</div>
 </div>
 
-<!-- Right: Chat -->
 <div id="chat-panel">
   <header>
     <h1>Riko Chat</h1>
@@ -173,7 +198,6 @@
   </div>
 </div>
 
-<!-- Three.js + VRM -->
 <script type="importmap">
 {
   "imports": {
@@ -192,8 +216,8 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
 const container = document.getElementById('avatar-panel');
 const loadingOverlay = document.getElementById('loading-overlay');
+const avatarLabel = document.getElementById('avatar-label');
 
-// Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -201,39 +225,30 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 container.insertBefore(renderer.domElement, container.firstChild);
 
-// Camera - framed for upper body
-const camera = new THREE.PerspectiveCamera(25, container.clientWidth / container.clientHeight, 0.1, 20.0);
-camera.position.set(0.0, 1.3, 3.0);
+const camera = new THREE.PerspectiveCamera(25, container.clientWidth / container.clientHeight, 0.1, 100.0);
+camera.position.set(0.0, 1.3, 3.5);
 
-// Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.screenSpacePanning = true;
-controls.target.set(0.0, 1.2, 0.0);
+controls.target.set(0.0, 1.0, 0.0);
 controls.enablePan = false;
-controls.minDistance = 1.5;
-controls.maxDistance = 6;
+controls.minDistance = 1.0;
+controls.maxDistance = 10;
 controls.update();
 
-// Scene
 const scene = new THREE.Scene();
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 const mainLight = new THREE.DirectionalLight(0xffeedd, 2.5);
 mainLight.position.set(1, 2, 3);
 scene.add(mainLight);
-
 const fillLight = new THREE.DirectionalLight(0xaaccff, 1.0);
 fillLight.position.set(-1, 1, -1);
 scene.add(fillLight);
-
 const rimLight = new THREE.DirectionalLight(0xe94560, 0.8);
 rimLight.position.set(0, 1, -3);
 scene.add(rimLight);
 
-// Ground shadow disc
 const groundGeo = new THREE.CircleGeometry(0.8, 32);
 const groundMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -241,58 +256,132 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0.01;
 scene.add(ground);
 
-// Load VRM
+// Model state
+let currentModel = null;
 let currentVrm = null;
 let mixer = null;
-const loader = new GLTFLoader();
-loader.crossOrigin = 'anonymous';
-loader.register((parser) => new VRMLoaderPlugin(parser));
-
-loader.load(
-  '/static/model.vrm',
-  (gltf) => {
-    const vrm = gltf.userData.vrm;
-    VRMUtils.removeUnnecessaryVertices(gltf.scene);
-    VRMUtils.combineSkeletons(gltf.scene);
-    VRMUtils.combineMorphs(vrm);
-
-    vrm.scene.traverse((obj) => { obj.frustumCulled = false; });
-
-    currentVrm = vrm;
-    scene.add(vrm.scene);
-    loadingOverlay.style.display = 'none';
-
-    // Idle breathing animation
-    startIdleAnimation();
-  },
-  (progress) => {
-    const pct = Math.round(100 * (progress.loaded / progress.total));
-    loadingOverlay.querySelector('div:last-child').textContent = `Loading model... ${pct}%`;
-  },
-  (error) => {
-    console.error('VRM load error:', error);
-    loadingOverlay.querySelector('div:last-child').textContent = 'Failed to load model';
-  }
-);
-
-// Idle animation - gentle breathing + blinking
+let activeModelName = null;
 let idleTime = 0;
-let blinkTimer = 0;
-let nextBlink = 3;
+let baseY = 0;
 
-function startIdleAnimation() {
-  // nothing extra needed, handled in animate loop
+const MODELS = {
+  ani:  { url: '/static/ani_model.glb', type: 'glb',  label: 'Ani' },
+  riko: { url: '/static/model.vrm',     type: 'vrm',  label: 'Riko' },
+};
+
+function clearCurrentModel() {
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel = null;
+  }
+  currentVrm = null;
+  mixer = null;
+  idleTime = 0;
+  baseY = 0;
 }
 
-// Expose a function for chat to trigger reactions
+function loadModel(name) {
+  if (activeModelName === name) return;
+  activeModelName = name;
+  const modelDef = MODELS[name];
+
+  clearCurrentModel();
+  loadingOverlay.style.display = 'flex';
+  loadingOverlay.querySelector('div:last-child').textContent = `Loading ${modelDef.label}...`;
+  avatarLabel.textContent = modelDef.label;
+
+  // Update switcher buttons
+  document.querySelectorAll('#model-switcher button').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase() === name);
+  });
+
+  const loader = new GLTFLoader();
+
+  if (modelDef.type === 'vrm') {
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+  }
+
+  loader.load(
+    modelDef.url,
+    (gltf) => {
+      if (activeModelName !== name) return; // switched away while loading
+
+      if (modelDef.type === 'vrm') {
+        const vrm = gltf.userData.vrm;
+        VRMUtils.removeUnnecessaryVertices(gltf.scene);
+        VRMUtils.combineSkeletons(gltf.scene);
+        VRMUtils.combineMorphs(vrm);
+        vrm.scene.traverse((obj) => { obj.frustumCulled = false; });
+        currentVrm = vrm;
+        currentModel = vrm.scene;
+        scene.add(currentModel);
+
+        controls.target.set(0.0, 1.2, 0.0);
+        camera.position.set(0.0, 1.3, 3.5);
+        controls.update();
+        baseY = 0;
+      } else {
+        // GLB
+        currentModel = gltf.scene;
+
+        const box = new THREE.Box3().setFromObject(currentModel);
+        const size = box.getSize(new THREE.Vector3());
+
+        const targetHeight = 2.0;
+        const scale = targetHeight / size.y;
+        currentModel.scale.setScalar(scale);
+
+        const scaledBox = new THREE.Box3().setFromObject(currentModel);
+        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+        currentModel.position.x -= scaledCenter.x;
+        currentModel.position.z -= scaledCenter.z;
+        currentModel.position.y -= scaledBox.min.y;
+
+        const finalBox = new THREE.Box3().setFromObject(currentModel);
+        const finalCenter = finalBox.getCenter(new THREE.Vector3());
+        controls.target.copy(finalCenter);
+        camera.position.set(0, finalCenter.y, 3.5);
+        controls.update();
+        baseY = currentModel.position.y;
+
+        currentModel.traverse((obj) => { obj.frustumCulled = false; });
+        scene.add(currentModel);
+
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(currentModel);
+          const action = mixer.clipAction(gltf.animations[0]);
+          action.play();
+        }
+      }
+
+      loadingOverlay.style.display = 'none';
+      console.log(`${modelDef.label} loaded`);
+    },
+    (progress) => {
+      if (progress.total > 0) {
+        const pct = Math.round(100 * (progress.loaded / progress.total));
+        loadingOverlay.querySelector('div:last-child').textContent = `Loading ${modelDef.label}... ${pct}%`;
+      }
+    },
+    (error) => {
+      console.error('Model load error:', error);
+      loadingOverlay.querySelector('div:last-child').textContent = 'Failed to load model';
+    }
+  );
+}
+
+// Expose switch function globally
+window.switchModel = function(name) { loadModel(name); };
+
+// Expose talking trigger
+let talkingUntil = 0;
 window.triggerTalkingAnimation = function() {
-  if (!currentVrm) return;
   talkingUntil = performance.now() + 2000;
 };
 
-let talkingUntil = 0;
-
 // Animate
+let blinkTimer = 0;
+let nextBlink = 3;
 const clock = new THREE.Clock();
 clock.start();
 
@@ -300,19 +389,22 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
 
-  if (currentVrm) {
+  if (mixer) mixer.update(delta);
+
+  if (currentModel) {
     idleTime += delta;
+    const breathe = Math.sin(idleTime * 1.5) * 0.002;
+    currentModel.position.y = baseY + breathe;
+  }
 
-    // Breathing - subtle body movement
-    const breathe = Math.sin(idleTime * 1.5) * 0.003;
-    currentVrm.scene.position.y = breathe;
-
+  if (currentVrm) {
     // Blinking
     blinkTimer += delta;
     if (blinkTimer > nextBlink) {
       blinkTimer = 0;
       nextBlink = 2 + Math.random() * 4;
-      doBlink();
+      trySetExpression('blink', 1);
+      setTimeout(() => trySetExpression('blink', 0), 120);
     }
 
     // Head sway
@@ -322,7 +414,7 @@ function animate() {
       headBone.rotation.x = Math.sin(idleTime * 0.3) * 0.01;
     }
 
-    // Talking reaction
+    // Talking
     if (performance.now() < talkingUntil) {
       const talkPhase = performance.now() * 0.008;
       trySetExpression('aa', Math.abs(Math.sin(talkPhase)) * 0.4);
@@ -336,12 +428,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-function doBlink() {
-  if (!currentVrm) return;
-  trySetExpression('blink', 1);
-  setTimeout(() => trySetExpression('blink', 0), 120);
-}
-
 function trySetExpression(name, value) {
   if (!currentVrm?.expressionManager) return;
   try { currentVrm.expressionManager.setValue(name, value); } catch(e) {}
@@ -349,7 +435,7 @@ function trySetExpression(name, value) {
 
 animate();
 
-// Resize handling
+// Resize
 window.addEventListener('resize', () => {
   const w = container.clientWidth;
   const h = container.clientHeight;
@@ -357,9 +443,11 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
 });
+
+// Load Ani by default
+loadModel('ani');
 </script>
 
-<!-- Chat logic -->
 <script>
 const chat = document.getElementById('chat');
 const msgInput = document.getElementById('msg');
@@ -402,7 +490,6 @@ async function send() {
     const data = await res.json();
     typing.remove();
     addMessage('assistant', data.reply);
-    // Trigger avatar talking animation
     if (window.triggerTalkingAnimation) window.triggerTalkingAnimation();
   } catch (e) {
     typing.remove();
